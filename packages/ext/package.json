@@ -1,0 +1,56 @@
+{
+  "name": "harness-scouter-vscode",
+  "displayName": "Harness Scouter",
+  "description": "Claude Code 트랜스크립트에서 하네스 설계 품질을 측정한다",
+  "version": "0.0.1",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "harnessScouter.showPanel",
+        "title": "Harness Scouter: 육각형 리포트 열기"
+      },
+      {
+        "command": "harnessScouter.scan",
+        "title": "Harness Scouter: 트랜스크립트 스캔"
+      }
+    ],
+    "configuration": {
+      "title": "Harness Scouter",
+      "properties": {
+        "harnessScouter.nodePath": {
+          "type": "string",
+          "default": "node",
+          "description": "CLI를 실행할 node 경로. Extension Host가 아니라 자식 프로세스에서 돌린다."
+        },
+        "harnessScouter.cliPath": {
+          "type": "string",
+          "default": "",
+          "description": "scouter CLI의 dist/index.js 경로. 비우면 확장 설치 위치 기준으로 찾는다."
+        },
+        "harnessScouter.dbPath": {
+          "type": "string",
+          "default": "",
+          "description": "SQLite 파일 경로. 비우면 홈 디렉토리 아래 기본값을 쓴다."
+        },
+        "harnessScouter.scanOnStartup": {
+          "type": "boolean",
+          "default": false,
+          "description": "확장이 켜질 때 증분 스캔을 한 번 돌린다."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc --build"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0"
+  }
+}

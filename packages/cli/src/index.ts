@@ -22,7 +22,7 @@ const USAGE = `harness-scouter
   scouter report [--db <path>] [--project <s>]  최신 구간의 6축과 변화를 본다
   scouter periods [--db <path>]                 구간 목록을 본다
   scouter json [--db <path>]                    확장이 읽을 JSON을 낸다
-  scouter html [--db <path>] [--out <path>]     육각형 리포트를 HTML로 낸다
+  scouter html [--db <path>] [--out <path>]     육각형 리포트를 HTML로 낸다 (--out - 이면 stdout)
 `;
 
 function parseArgs(argv: string[]): {
@@ -256,8 +256,14 @@ async function main(): Promise<void> {
       return;
     }
     const out = flags.get("out") ?? "/tmp/harness-scouter.html";
-    writeFileSync(out, renderHtml(report), "utf8");
-    process.stdout.write(`${out}\n`);
+    const html = renderHtml(report);
+    if (out === "-") {
+      // 확장이 파이프로 받아 Webview에 그대로 넣는다.
+      process.stdout.write(html);
+    } else {
+      writeFileSync(out, html, "utf8");
+      process.stdout.write(`${out}\n`);
+    }
     db.close();
     return;
   }
