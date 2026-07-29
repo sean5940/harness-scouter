@@ -59,6 +59,8 @@ export interface SessionRow {
  */
 export interface ToolCallRow {
   sessionId: string;
+  /** 이 행이 어느 트랜스크립트 파일에서 왔는지. 재파싱 시 그 파일 몫만 지우는 데 쓴다. */
+  sourceFile: string;
   uuid: string;
   seq: number;
   name: string;
@@ -79,6 +81,7 @@ export interface ToolCallRow {
 /** Read 결과의 크기 정보. 축1 no-op 가드에 필요하다. */
 export interface ToolResultRow {
   sessionId: string;
+  sourceFile: string;
   uuid: string;
   totalLines: number | null;
   numLines: number | null;
@@ -90,6 +93,7 @@ export interface ToolResultRow {
 
 export interface ArtifactRow {
   sessionId: string;
+  sourceFile: string;
   kind: "pr" | "commit";
   ref: string;
   ts: string | null;

@@ -65,6 +65,7 @@ function detectExecMode(entrypoint: string | null): ExecMode {
 export function extractFacts(
   entries: RawEntry[],
   projectDir: string,
+  sourceFile: string,
 ): ExtractedFacts {
   const sessions = new Map<string, SessionRow>();
   const skillsBySession = new Map<string, Set<string>>();
@@ -123,6 +124,7 @@ export function extractFacts(
     if (entry.type === "pr-link" && entry.prNumber !== undefined) {
       artifacts.push({
         sessionId,
+        sourceFile,
         kind: "pr",
         ref: String(entry.prNumber),
         ts,
@@ -140,6 +142,7 @@ export function extractFacts(
 
         toolCalls.push({
           sessionId,
+          sourceFile,
           uuid: block.id ?? `${sessionId}:${seq}`,
           seq,
           name,
@@ -157,8 +160,9 @@ export function extractFacts(
         if (command !== null && classifyBash(command).isCommit) {
           artifacts.push({
             sessionId,
+            sourceFile,
             kind: "commit",
-            ref: `${sessionId}:${seq}`,
+            ref: `${sourceFile}:${seq}`,
             ts,
           });
         }
@@ -173,7 +177,7 @@ export function extractFacts(
       if (block.type !== "tool_result") continue;
       const id = block.tool_use_id;
       if (id === undefined) continue;
-      const result = extractToolResult(sessionId, id, entry.toolUseResult);
+      const result = extractToolResult(sessionId, sourceFile, id, entry.toolUseResult);
       toolResults.push(result);
       const tail = extractStdoutTail(entry.toolUseResult);
       if (tail !== null) stdoutTails.set(id, tail);
@@ -202,11 +206,13 @@ export function extractFacts(
 
 function extractToolResult(
   sessionId: string,
+  sourceFile: string,
   uuid: string,
   raw: unknown,
 ): ToolResultRow {
   const row: ToolResultRow = {
     sessionId,
+    sourceFile,
     uuid,
     totalLines: null,
     numLines: null,

@@ -100,7 +100,11 @@ export async function scan(
       stats.malformedLines += result.malformedLines;
       if (result.reparsedFromStart && cursor !== null) stats.fullReparses += 1;
 
-      const facts = extractFacts(result.entries, target.project);
+      const facts = extractFacts(
+        result.entries,
+        target.project,
+        target.path,
+      );
       db.applyFile(
         target.path,
         { mtimeMs: result.mtimeMs, byteOffset: result.byteOffset },

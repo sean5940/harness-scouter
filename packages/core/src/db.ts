@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS tool_call (
   read_limit  INTEGER,
   is_sidechain INTEGER NOT NULL DEFAULT 0,
   agent_id    TEXT,
+  source_file TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (session_id, uuid)
 );
 
@@ -57,6 +58,7 @@ CREATE TABLE IF NOT EXISTS tool_result (
   subagent_tool_calls INTEGER,
   subagent_edit_files INTEGER,
   stdout_tail         TEXT,
+  source_file         TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (session_id, uuid)
 );
 
@@ -65,6 +67,7 @@ CREATE TABLE IF NOT EXISTS artifact (
   kind       TEXT NOT NULL,
   ref        TEXT NOT NULL,
   ts         TEXT,
+  source_file TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (session_id, kind, ref)
 );
 
@@ -124,17 +127,13 @@ export class ScouterDb {
     this.db.exec("BEGIN");
     try {
       if (reparsedFromStart) {
-        for (const sessionId of facts.sessions.keys()) {
-          this.db
-            .prepare("DELETE FROM tool_call WHERE session_id = ?")
-            .run(sessionId);
-          this.db
-            .prepare("DELETE FROM tool_result WHERE session_id = ?")
-            .run(sessionId);
-          this.db
-            .prepare("DELETE FROM artifact WHERE session_id = ?")
-            .run(sessionId);
-        }
+        // 한 세션의 기록이 메인 파일과 subagent 파일 여러 개에 흩어져 있다(평균 3.2개).
+        // 세션 단위로 지우면 재파싱하지 않은 파일의 행까지 날아가고 다시 채워지지 않는다.
+        this.db.prepare("DELETE FROM tool_call WHERE source_file = ?").run(path);
+        this.db
+          .prepare("DELETE FROM tool_result WHERE source_file = ?")
+          .run(path);
+        this.db.prepare("DELETE FROM artifact WHERE source_file = ?").run(path);
       }
 
       const upsertSession = this.db.prepare(`
@@ -168,8 +167,8 @@ export class ScouterDb {
 
       const insertCall = this.db.prepare(`
         INSERT OR REPLACE INTO tool_call
-          (session_id, uuid, seq, name, ts, is_error, denial_kind, command, file_path, read_offset, read_limit, is_sidechain, agent_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (session_id, uuid, seq, name, ts, is_error, denial_kind, command, file_path, read_offset, read_limit, is_sidechain, agent_id, source_file)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const c of facts.toolCalls) {
         insertCall.run(
@@ -186,14 +185,15 @@ export class ScouterDb {
           c.readLimit,
           c.isSidechain,
           c.agentId,
+          path,
         );
       }
 
       const insertResult = this.db.prepare(`
         INSERT OR REPLACE INTO tool_result
           (session_id, uuid, total_lines, num_lines, start_line,
-           subagent_tool_calls, subagent_edit_files, stdout_tail)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           subagent_tool_calls, subagent_edit_files, stdout_tail, source_file)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const r of facts.toolResults) {
         insertResult.run(
@@ -205,14 +205,15 @@ export class ScouterDb {
           r.subagentToolCalls,
           r.subagentEditFiles,
           facts.stdoutTails.get(r.uuid) ?? null,
+          path,
         );
       }
 
       const insertArtifact = this.db.prepare(
-        "INSERT OR REPLACE INTO artifact (session_id, kind, ref, ts) VALUES (?, ?, ?, ?)",
+        "INSERT OR REPLACE INTO artifact (session_id, kind, ref, ts, source_file) VALUES (?, ?, ?, ?, ?)",
       );
       for (const a of facts.artifacts) {
-        insertArtifact.run(a.sessionId, a.kind, a.ref, a.ts);
+        insertArtifact.run(a.sessionId, a.kind, a.ref, a.ts, path);
       }
 
       this.db
@@ -252,7 +253,7 @@ export class ScouterDb {
                 r.subagent_tool_calls, r.subagent_edit_files, r.stdout_tail
          FROM tool_call c
          LEFT JOIN tool_result r ON r.session_id = c.session_id AND r.uuid = c.uuid
-         WHERE c.session_id = ? ORDER BY c.ts, c.seq`,
+         WHERE c.session_id = ? ORDER BY c.ts, c.source_file, c.seq`,
       )
       .all(sessionId) as unknown as ToolCallRecord[];
   }
