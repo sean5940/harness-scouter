@@ -7,3 +7,4 @@ export * from "./metrics.js";
 export * from "./periods.js";
 export * from "./scan.js";
 export * from "./analyze.js";
+export * from './radar.js';

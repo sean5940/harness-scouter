@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import {
@@ -7,6 +7,7 @@ import {
   AXIS_LABELS,
   AXIS_ORDER,
   axisScore,
+  renderRadarSvg,
   defaultDbPath,
   defaultTranscriptRoot,
   scan,
@@ -21,6 +22,7 @@ const USAGE = `harness-scouter
   scouter report [--db <path>] [--project <s>]  최신 구간의 6축과 변화를 본다
   scouter periods [--db <path>]                 구간 목록을 본다
   scouter json [--db <path>]                    확장이 읽을 JSON을 낸다
+  scouter html [--db <path>] [--out <path>]     육각형 리포트를 HTML로 낸다
 `;
 
 function parseArgs(argv: string[]): {
@@ -91,6 +93,63 @@ function renderReport(report: PeriodReport, title: string): string {
   lines.push(`  ${"─".repeat(78)}`);
   lines.push(`  ${covNote}${closeNote}`);
   return lines.join("\n");
+}
+
+/** Webview에 그대로 옮길 수 있도록 외부 리소스 없이 한 파일로 만든다 (설계 7절 CSP 제약). */
+function renderHtml(report: PeriodReport): string {
+  const p = report.period;
+  const cov = report.coverage;
+  const grayedOut = cov !== null && cov < 0.5;
+  const svg = renderRadarSvg(report.axes, { grayedOut });
+
+  const rows = report.axes
+    .map((a) => {
+      const value =
+        a.current === null ? "—" : `${(a.current * 100).toFixed(1)}%`;
+      const base =
+        a.baseline === null ? "—" : `${(a.baseline * 100).toFixed(1)}%`;
+      const delta =
+        a.delta === null
+          ? "—"
+          : `<span class="${a.delta >= 0 ? "up" : "down"}">${a.delta >= 0 ? "+" : ""}${(a.delta * 100).toFixed(1)}p</span>`;
+      return `<tr><td>${AXIS_LABELS[a.key]}${a.unfilled ? ' <span class="warn">분모부족</span>' : ""}</td><td class="num">${value}</td><td class="num dim">${base}</td><td class="num">${delta}</td><td class="num dim">${a.denominator}</td></tr>`;
+    })
+    .join("\n");
+
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<title>Harness Scouter</title>
+<style>
+:root{--hs-bg:#fff;--hs-text:#1b1f2a;--hs-text-dim:#6b7280;--hs-grid:#c7cbe0;--hs-grid-muted:#e3e5ec;
+--hs-baseline:#2c3e91;--hs-current:#a8905c;--hs-muted:#b6bac6;--hs-up:#1a7f4b;--hs-down:#b3352c;--hs-line:#e6e8ef}
+@media (prefers-color-scheme:dark){:root{--hs-bg:#14161c;--hs-text:#e7e9f0;--hs-text-dim:#9aa0ae;
+--hs-grid:#3a4058;--hs-grid-muted:#282c38;--hs-baseline:#7b90e8;--hs-current:#d9bd7d;--hs-muted:#565b6a;
+--hs-up:#54c68a;--hs-down:#e8776c;--hs-line:#272a35}}
+body{margin:0;padding:28px;background:var(--hs-bg);color:var(--hs-text);
+font-family:-apple-system,BlinkMacSystemFont,'Pretendard','Apple SD Gothic Neo',sans-serif}
+.wrap{max-width:860px;margin:0 auto}
+h1{font-size:19px;margin:0 0 4px}
+.meta{color:var(--hs-text-dim);font-size:13px;margin-bottom:18px}
+.chart{max-width:560px;margin:0 auto}
+table{width:100%;border-collapse:collapse;margin-top:22px;font-size:14px}
+th,td{padding:9px 10px;border-bottom:1px solid var(--hs-line);text-align:left}
+th{color:var(--hs-text-dim);font-weight:600;font-size:12px}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.dim{color:var(--hs-text-dim)}
+.up{color:var(--hs-up)}.down{color:var(--hs-down)}
+.warn{color:var(--hs-down);font-size:11px}
+.note{margin-top:14px;font-size:12px;color:var(--hs-text-dim);line-height:1.6}
+</style></head><body><div class="wrap">
+<h1>구간 #${p.index}</h1>
+<div class="meta">${p.startedAt.slice(0, 10)} ~ ${p.endedAt.slice(0, 10)} · 세션 ${p.sessionIds.length}개 · 계측 커버리지 ${
+    cov === null ? "—" : `${(cov * 100).toFixed(1)}%`
+  }${grayedOut ? " · 커버리지 미달로 판정 보류" : ""}</div>
+<div class="chart">${svg}</div>
+<table><thead><tr><th>축</th><th class="num">현재</th><th class="num">기준</th><th class="num">변화</th><th class="num">분모</th></tr></thead>
+<tbody>${rows}</tbody></table>
+<div class="note">굵은 육각형은 눈금 상한, 파선은 직전 3구간 중앙값(기준), 채운 면은 이번 구간이다.
+파선 밖으로 나간 축이 기준보다 좋아진 축이다.
+마주보는 축은 서로 상충한다 — 읽기 범위↔읽기 왕복, 검증 신선도↔검증 공회전.</div>
+</div></body></html>`;
 }
 
 async function main(): Promise<void> {
@@ -183,6 +242,22 @@ async function main(): Promise<void> {
         `  ${String(p.index).padStart(2)} ${String(p.sessionIds.length).padStart(4)}  ${p.startedAt.slice(0, 10)}~${p.endedAt.slice(5, 10)}  ${scores}${note}\n`,
       );
     }
+    db.close();
+    return;
+  }
+
+  if (command === "html") {
+    const db = openDb(flags);
+    const result = analyze(db);
+    const report = result.latestClosed;
+    if (report === null) {
+      process.stdout.write("닫힌 구간이 없습니다.\n");
+      db.close();
+      return;
+    }
+    const out = flags.get("out") ?? "/tmp/harness-scouter.html";
+    writeFileSync(out, renderHtml(report), "utf8");
+    process.stdout.write(`${out}\n`);
     db.close();
     return;
   }
