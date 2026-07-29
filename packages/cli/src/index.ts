@@ -8,6 +8,7 @@ import {
   AXIS_ORDER,
   axisScore,
   diagnosePeriod,
+  runGate,
   renderRadarSvg,
   defaultDbPath,
   defaultTranscriptRoot,
@@ -23,6 +24,7 @@ const USAGE = `harness-scouter
   scouter report [--db <path>] [--project <s>]  최신 구간의 6축과 변화를 본다
   scouter periods [--db <path>]                 구간 목록을 본다
   scouter diag [--db <path>]                    최신 구간의 누수 지점과 근거 세션을 본다
+  scouter gate [--db <path>]                    M0.5 재현성 게이트를 돌린다
   scouter json [--db <path>]                    확장이 읽을 JSON을 낸다
   scouter html [--db <path>] [--out <path>]     육각형 리포트를 HTML로 낸다 (--out - 이면 stdout)
 `;
@@ -244,6 +246,43 @@ async function main(): Promise<void> {
         `  ${String(p.index).padStart(2)} ${String(p.sessionIds.length).padStart(4)}  ${p.startedAt.slice(0, 10)}~${p.endedAt.slice(5, 10)}  ${scores}${note}\n`,
       );
     }
+    db.close();
+    return;
+  }
+
+  if (command === "gate") {
+    const db = openDb(flags);
+    const result = analyze(db);
+    const gate = runGate(result.sessions, result.forPeriods);
+    process.stdout.write(
+      `\n  M0.5 재현성 게이트 — 닫힌 구간 ${gate.periodCount}개\n\n`,
+    );
+    for (const axis of gate.axes) {
+      process.stdout.write(
+        `  ${axis.passed ? "통과" : "미달"}  ${AXIS_LABELS[axis.axis]}\n`,
+      );
+      for (const c of axis.checks) {
+        process.stdout.write(
+          `        ${c.passed ? "o" : "X"} ${c.name.padEnd(7)} ${c.value.padEnd(38)} ${c.criterion}\n`,
+        );
+      }
+      process.stdout.write("\n");
+    }
+    const dependent = gate.correlations.filter((c) => !c.independent);
+    process.stdout.write(
+      dependent.length === 0
+        ? "  축 독립성: 모든 쌍 |rho| <= 0.6\n"
+        : `  축 독립성 위반 ${dependent.length}건:\n${dependent
+            .map(
+              (c) =>
+                `        ${AXIS_LABELS[c.a]} ~ ${AXIS_LABELS[c.b]}  rho=${c.r.toFixed(3)}\n`,
+            )
+            .join("")}`,
+    );
+    const failed = gate.axes.filter((a) => !a.passed);
+    process.stdout.write(
+      `\n  결과: ${gate.axes.length - failed.length}/${gate.axes.length} 축 통과\n`,
+    );
     db.close();
     return;
   }

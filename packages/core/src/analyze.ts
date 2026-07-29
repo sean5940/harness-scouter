@@ -15,6 +15,7 @@ export interface AnalysisFilter {
 }
 
 export interface Analysis {
+  forPeriods: SessionForPeriod[];
   sessions: SessionMetrics[];
   periods: Period[];
   latest: PeriodReport | null;
@@ -56,5 +57,5 @@ export function analyze(db: ScouterDb, filter: AnalysisFilter = {}): Analysis {
     }
   }
 
-  return { sessions, periods, latest, latestClosed };
+  return { sessions, forPeriods, periods, latest, latestClosed };
 }
