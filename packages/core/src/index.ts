@@ -8,3 +8,4 @@ export * from "./periods.js";
 export * from "./scan.js";
 export * from "./analyze.js";
 export * from './radar.js';
+export * from './diagnose.js';

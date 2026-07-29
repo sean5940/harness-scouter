@@ -7,6 +7,7 @@ import {
   AXIS_LABELS,
   AXIS_ORDER,
   axisScore,
+  diagnosePeriod,
   renderRadarSvg,
   defaultDbPath,
   defaultTranscriptRoot,
@@ -21,6 +22,7 @@ const USAGE = `harness-scouter
   scouter scan [--root <path>] [--db <path>]    트랜스크립트를 증분 스캔한다
   scouter report [--db <path>] [--project <s>]  최신 구간의 6축과 변화를 본다
   scouter periods [--db <path>]                 구간 목록을 본다
+  scouter diag [--db <path>]                    최신 구간의 누수 지점과 근거 세션을 본다
   scouter json [--db <path>]                    확장이 읽을 JSON을 낸다
   scouter html [--db <path>] [--out <path>]     육각형 리포트를 HTML로 낸다 (--out - 이면 stdout)
 `;
@@ -241,6 +243,41 @@ async function main(): Promise<void> {
       process.stdout.write(
         `  ${String(p.index).padStart(2)} ${String(p.sessionIds.length).padStart(4)}  ${p.startedAt.slice(0, 10)}~${p.endedAt.slice(5, 10)}  ${scores}${note}\n`,
       );
+    }
+    db.close();
+    return;
+  }
+
+  if (command === "diag") {
+    const db = openDb(flags);
+    const result = analyze(db);
+    const report = result.latestClosed;
+    if (report === null) {
+      process.stdout.write("닫힌 구간이 없습니다.\n");
+      db.close();
+      return;
+    }
+    const p = report.period;
+    process.stdout.write(
+      `\n  구간 #${p.index}  ${p.startedAt.slice(0, 10)} ~ ${p.endedAt.slice(0, 10)}  세션 ${p.sessionIds.length}개\n\n`,
+    );
+    for (const d of diagnosePeriod(db, p)) {
+      if (d.items.length === 0) continue;
+      const axis = report.axes.find((a) => a.key === d.axis);
+      const score =
+        axis?.current == null ? "—" : `${(axis.current * 100).toFixed(0)}%`;
+      process.stdout.write(
+        `  ${AXIS_LABELS[d.axis]} (${score}) — ${d.headline}\n`,
+      );
+      for (const item of d.items) {
+        process.stdout.write(
+          `    ${String(item.count).padStart(4)}회  ${item.subject}\n`,
+        );
+        process.stdout.write(
+          `          ${item.sessions.map((s) => s.slice(0, 8)).join(" ")}\n`,
+        );
+      }
+      process.stdout.write("\n");
     }
     db.close();
     return;
