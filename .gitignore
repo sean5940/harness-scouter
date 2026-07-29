@@ -4,3 +4,5 @@ dist/
 *.sqlite-journal
 .vscode-test/
 *.vsix
+*.tsbuildinfo
+.DS_Store
