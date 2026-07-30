@@ -1,4 +1,5 @@
 import type { ToolCallRecord } from "./db.js";
+import { searchTermOf } from "./bash.js";
 import {
   classifyBash,
   isEffectivePartialRead,
@@ -23,9 +24,23 @@ export interface CoverageCount {
   opaque: number;
 }
 
+/** 능력치 합성에만 쓰는 보조 신호. 축이 아니라 구성요소다. */
+export interface ExtraCounts {
+  /** 체크포인트(검증·커밋)를 넘긴 뒤 같은 파일을 다시 고친 비율 */
+  rework: AxisCount;
+  /** 세션 내 같은 검색 명령을 다시 돌린 비율 */
+  searchRepeat: AxisCount;
+  /** 훅·권한에 막힌 호출 비율 */
+  ruleFriction: AxisCount;
+  askQuestions: number;
+  assistantTurns: number;
+  codeEdits: number;
+}
+
 export interface SessionMetrics {
   sessionId: string;
   axes: AxisCounts;
+  extras: ExtraCounts;
   coverage: CoverageCount;
   /** 성패를 못 가린 verifier 호출 수. 축4 해석의 신뢰도 표시에 쓴다. */
   verifierOutcomeUnknown: number;
@@ -86,6 +101,19 @@ export function computeSessionMetrics(
   let verifierOutcomeUnknown = 0;
   let blockedCalls = 0;
 
+  const extras: ExtraCounts = {
+    rework: { num: 0, den: 0 },
+    searchRepeat: { num: 0, den: 0 },
+    ruleFriction: { num: 0, den: 0 },
+    askQuestions: 0,
+    assistantTurns: 0,
+    codeEdits: 0,
+  };
+  // 체크포인트 이후 재작업 판정용. 파일별로 마지막 편집이 체크포인트 앞인지 뒤인지 본다.
+  const editedBefore = new Map<string, number>();
+  let lastCheckpoint = -1;
+  const seenSearches = new Set<string>();
+
   const hasSidechainRecords = calls.some((c) => c.is_sidechain === 1);
   const readStates = new Map<string, ReadState>();
   const segment: CommitSegment = {
@@ -106,10 +134,14 @@ export function computeSessionMetrics(
     // 훅이나 권한에 막힌 호출은 실행되지 않았다. 축에 넣으면 게이트가 잘 작동할수록
     // 점수가 나빠지는 역설이 생긴다. 실제로 축5b 분자의 상당수가 이 프로젝트 자신의
     // 검색 게이트가 막은 호출이었다.
+    extras.ruleFriction.den += 1;
     if (call.denial_kind !== null) {
       blockedCalls += 1;
+      extras.ruleFriction.num += 1;
       continue;
     }
+
+    if (call.name === "AskUserQuestion") extras.askQuestions += 1;
 
     const { name } = call;
     const agentKey = call.agent_id ?? "main";
@@ -154,8 +186,17 @@ export function computeSessionMetrics(
       axes.instrumentedChannel.den += 1;
       const path = call.file_path;
       if (path !== null) {
+        // 같은 파일을 체크포인트 넘어서 다시 고쳤으면 재작업이다. 같은 패스 안의
+        // 여러 hunk 편집은 정상이라 체크포인트를 기준으로 가른다.
+        extras.rework.den += 1;
+        const previousEdit = editedBefore.get(path);
+        if (previousEdit !== undefined && lastCheckpoint > previousEdit) {
+          extras.rework.num += 1;
+        }
+        editedBefore.set(path, order);
         reads.lastEdit.set(path, order);
         if (isCodeFile(path)) {
+          extras.codeEdits += 1;
           segment.lastCodeEdit = order;
           segment.hasCodeEdit = true;
         }
@@ -209,6 +250,14 @@ export function computeSessionMetrics(
     if (kind.isRecursiveSearch) {
       axes.indexedRetrieval.den += 1;
       axes.indexedRetrieval.num += 1;
+      // 같은 대상을 또 찾는 것은 첫 검색이 원하는 것을 못 찾았다는 뜻이다.
+      // 명령 전체가 아니라 검색어로 비교한다. 경로·플래그는 바꾸면서 term은 유지하기 때문이다.
+      const term = searchTermOf(call.command);
+      if (term !== null) {
+        extras.searchRepeat.den += 1;
+        if (seenSearches.has(term)) extras.searchRepeat.num += 1;
+        else seenSearches.add(term);
+      }
     }
 
     if (kind.verifierKinds.length > 0) {
@@ -221,6 +270,7 @@ export function computeSessionMetrics(
       }
       blockKinds.set(agentKey, seen);
       if (call.stdout_tail === null) verifierOutcomeUnknown += 1;
+      lastCheckpoint = order;
     }
 
     if (kind.isCommit && !kind.isCommitAmend) {
@@ -233,10 +283,18 @@ export function computeSessionMetrics(
       segment.lastCodeEdit = -1;
       segment.lastVerifier = -1;
       segment.hasCodeEdit = false;
+      lastCheckpoint = order;
     }
   }
 
-  return { sessionId, axes, coverage, verifierOutcomeUnknown, blockedCalls };
+  return {
+    sessionId,
+    axes,
+    extras,
+    coverage,
+    verifierOutcomeUnknown,
+    blockedCalls,
+  };
 }
 
 /**
@@ -266,4 +324,27 @@ export function addCounts(target: AxisCounts, source: AxisCounts): void {
 export function coverageRatio(c: CoverageCount): number | null {
   const total = c.observable + c.offChannel + c.opaque;
   return total === 0 ? null : c.observable / total;
+}
+
+export function addExtras(target: ExtraCounts, source: ExtraCounts): void {
+  target.rework.num += source.rework.num;
+  target.rework.den += source.rework.den;
+  target.searchRepeat.num += source.searchRepeat.num;
+  target.searchRepeat.den += source.searchRepeat.den;
+  target.ruleFriction.num += source.ruleFriction.num;
+  target.ruleFriction.den += source.ruleFriction.den;
+  target.askQuestions += source.askQuestions;
+  target.assistantTurns += source.assistantTurns;
+  target.codeEdits += source.codeEdits;
+}
+
+export function emptyExtras(): ExtraCounts {
+  return {
+    rework: { num: 0, den: 0 },
+    searchRepeat: { num: 0, den: 0 },
+    ruleFriction: { num: 0, den: 0 },
+    askQuestions: 0,
+    assistantTurns: 0,
+    codeEdits: 0,
+  };
 }

@@ -7,13 +7,27 @@ import {
 } from "./definitions.js";
 import {
   addCounts,
+  addExtras,
   axisScore,
   coverageRatio,
   emptyAxes,
+  emptyExtras,
   type AxisCounts,
   type CoverageCount,
+  type ExtraCounts,
   type SessionMetrics,
 } from "./metrics.js";
+
+/** 세션 단위 개입 이벤트 건수. 자율성 합성이 쓴다. */
+export interface SessionEvents {
+  interrupt: number;
+  queueMidflight: number;
+  userRejected: number;
+}
+
+export function emptyEvents(): SessionEvents {
+  return { interrupt: 0, queueMidflight: 0, userRejected: 0 };
+}
 
 export interface Period {
   index: number;
@@ -21,6 +35,10 @@ export interface Period {
   startedAt: string;
   endedAt: string;
   axes: AxisCounts;
+  extras: ExtraCounts;
+  events: SessionEvents;
+  /** 코드를 고친 세션 중 커밋이나 PR까지 간 비율. 완수력이 쓴다. */
+  delivery: { num: number; den: number };
   coverage: CoverageCount;
   /** 예산을 채워 닫혔는지. false면 세션 상한에 걸려 강제로 닫힌 구간이다. */
   closedByBudget: boolean;
@@ -34,6 +52,9 @@ export interface SessionForPeriod {
   metrics: SessionMetrics;
   startedAt: string;
   endedAt: string | null;
+  events: SessionEvents;
+  /** 이 세션이 커밋이나 PR을 남겼는지 */
+  reachedArtifact: boolean;
 }
 
 function unfilled(axes: AxisCounts): AxisKey[] {
@@ -54,6 +75,9 @@ export function segmentIntoPeriods(sessions: SessionForPeriod[]): Period[] {
   const periods: Period[] = [];
 
   let axes = emptyAxes();
+  let extras = emptyExtras();
+  let events = emptyEvents();
+  let delivery = { num: 0, den: 0 };
   let coverage: CoverageCount = { observable: 0, offChannel: 0, opaque: 0 };
   let members: SessionForPeriod[] = [];
 
@@ -67,18 +91,32 @@ export function segmentIntoPeriods(sessions: SessionForPeriod[]): Period[] {
       startedAt: first.startedAt,
       endedAt: last.endedAt ?? last.startedAt,
       axes,
+      extras,
+      events,
+      delivery,
       coverage,
       closedByBudget,
       unfilledAxes: unfilled(axes),
       open,
     });
     axes = emptyAxes();
+    extras = emptyExtras();
+    events = emptyEvents();
+    delivery = { num: 0, den: 0 };
     coverage = { observable: 0, offChannel: 0, opaque: 0 };
     members = [];
   };
 
   for (const session of ordered) {
     addCounts(axes, session.metrics.axes);
+    addExtras(extras, session.metrics.extras);
+    events.interrupt += session.events.interrupt;
+    events.queueMidflight += session.events.queueMidflight;
+    events.userRejected += session.events.userRejected;
+    if (session.metrics.extras.codeEdits > 0) {
+      delivery.den += 1;
+      if (session.reachedArtifact) delivery.num += 1;
+    }
     coverage.observable += session.metrics.coverage.observable;
     coverage.offChannel += session.metrics.coverage.offChannel;
     coverage.opaque += session.metrics.coverage.opaque;

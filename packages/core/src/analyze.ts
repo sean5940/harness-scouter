@@ -37,11 +37,22 @@ export function analyze(db: ScouterDb, filter: AnalysisFilter = {}): Analysis {
     const calls = db.toolCallsOf(meta.session_id);
     if (calls.length === 0) continue;
     const metrics = computeSessionMetrics(meta.session_id, calls);
+    metrics.extras.assistantTurns = meta.assistant_turns;
     sessions.push(metrics);
+
+    const eventCounts = db.eventCountsOf(meta.session_id);
+    const artifactKinds = db.artifactKindsOf(meta.session_id);
     forPeriods.push({
       metrics,
       startedAt: meta.started_at,
       endedAt: meta.ended_at,
+      events: {
+        interrupt: eventCounts["interrupt"] ?? 0,
+        queueMidflight: eventCounts["queue_enqueue_midflight"] ?? 0,
+        userRejected: calls.filter((c) => c.denial_kind === "user-rejected")
+          .length,
+      },
+      reachedArtifact: artifactKinds.has("commit") || artifactKinds.has("pr"),
     });
   }
 

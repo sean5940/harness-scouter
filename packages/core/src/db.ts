@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS session (
   cc_version TEXT,
   entrypoint TEXT,
   exec_mode  TEXT NOT NULL,
-  skills_json TEXT NOT NULL
+  skills_json TEXT NOT NULL,
+  assistant_turns INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS tool_call (
@@ -62,6 +63,14 @@ CREATE TABLE IF NOT EXISTS tool_result (
   PRIMARY KEY (session_id, uuid)
 );
 
+CREATE TABLE IF NOT EXISTS session_event (
+  session_id  TEXT NOT NULL,
+  kind        TEXT NOT NULL,
+  ts          TEXT,
+  source_file TEXT NOT NULL DEFAULT '',
+  seq         INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS artifact (
   session_id TEXT NOT NULL,
   kind       TEXT NOT NULL,
@@ -73,6 +82,7 @@ CREATE TABLE IF NOT EXISTS artifact (
 
 CREATE INDEX IF NOT EXISTS idx_tool_call_session ON tool_call(session_id, seq);
 CREATE INDEX IF NOT EXISTS idx_session_started ON session(started_at);
+CREATE INDEX IF NOT EXISTS idx_session_event ON session_event(session_id, kind);
 `;
 
 export interface ScanStats {
@@ -134,12 +144,16 @@ export class ScouterDb {
           .prepare("DELETE FROM tool_result WHERE source_file = ?")
           .run(path);
         this.db.prepare("DELETE FROM artifact WHERE source_file = ?").run(path);
+        this.db
+          .prepare("DELETE FROM session_event WHERE source_file = ?")
+          .run(path);
       }
 
       const upsertSession = this.db.prepare(`
         INSERT INTO session (session_id, project, git_branch, started_at, ended_at,
-                             model, cc_version, entrypoint, exec_mode, skills_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             model, cc_version, entrypoint, exec_mode, skills_json,
+                             assistant_turns)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(session_id) DO UPDATE SET
           git_branch = COALESCE(excluded.git_branch, session.git_branch),
           started_at = MIN(COALESCE(session.started_at, excluded.started_at), excluded.started_at),
@@ -148,7 +162,8 @@ export class ScouterDb {
           cc_version = COALESCE(excluded.cc_version, session.cc_version),
           entrypoint = COALESCE(excluded.entrypoint, session.entrypoint),
           exec_mode  = excluded.exec_mode,
-          skills_json = excluded.skills_json
+          skills_json = excluded.skills_json,
+          assistant_turns = session.assistant_turns + excluded.assistant_turns
       `);
       for (const s of facts.sessions.values()) {
         upsertSession.run(
@@ -162,6 +177,7 @@ export class ScouterDb {
           s.entrypoint,
           s.execMode,
           s.skillsJson,
+          s.assistantTurns,
         );
       }
 
@@ -216,6 +232,13 @@ export class ScouterDb {
         insertArtifact.run(a.sessionId, a.kind, a.ref, a.ts, path);
       }
 
+      const insertEvent = this.db.prepare(
+        "INSERT INTO session_event (session_id, kind, ts, source_file, seq) VALUES (?, ?, ?, ?, ?)",
+      );
+      facts.sessionEvents.forEach((e, index) => {
+        insertEvent.run(e.sessionId, e.kind, e.ts, path, index);
+      });
+
       this.db
         .prepare(
           `INSERT INTO file_cursor (path, mtime_ms, byte_offset, parsed_at)
@@ -239,6 +262,7 @@ export class ScouterDb {
     return this.db
       .prepare(
         `SELECT session_id, project, git_branch, started_at, ended_at, exec_mode, skills_json
+         , assistant_turns
          FROM session WHERE started_at IS NOT NULL ORDER BY started_at`,
       )
       .all() as unknown as SessionMeta[];
@@ -258,12 +282,33 @@ export class ScouterDb {
       .all(sessionId) as unknown as ToolCallRecord[];
   }
 
+  /** 세션별 이벤트 건수. 능력치 합성이 쓴다. */
+  eventCountsOf(sessionId: string): Record<string, number> {
+    const rows = this.db
+      .prepare(
+        "SELECT kind, COUNT(*) AS n FROM session_event WHERE session_id = ? GROUP BY kind",
+      )
+      .all(sessionId) as unknown as Array<{ kind: string; n: number }>;
+    const out: Record<string, number> = {};
+    for (const row of rows) out[row.kind] = row.n;
+    return out;
+  }
+
+  /** 세션별 산출물 종류. 완수력이 쓴다. */
+  artifactKindsOf(sessionId: string): Set<string> {
+    const rows = this.db
+      .prepare("SELECT DISTINCT kind FROM artifact WHERE session_id = ?")
+      .all(sessionId) as unknown as Array<{ kind: string }>;
+    return new Set(rows.map((r) => r.kind));
+  }
+
   counts(): Record<string, number> {
     const tables = [
       "session",
       "tool_call",
       "tool_result",
       "artifact",
+      "session_event",
       "file_cursor",
     ];
     const out: Record<string, number> = {};
@@ -279,6 +324,7 @@ export class ScouterDb {
 
 export interface SessionMeta {
   session_id: string;
+  assistant_turns: number;
   project: string;
   git_branch: string | null;
   started_at: string;

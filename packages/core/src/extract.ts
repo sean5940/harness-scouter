@@ -1,5 +1,6 @@
 import type {
   ArtifactRow,
+  SessionEventRow,
   ExecMode,
   RawEntry,
   SessionRow,
@@ -16,6 +17,7 @@ export interface ExtractedFacts {
   toolCalls: ToolCallRow[];
   toolResults: ToolResultRow[];
   artifacts: ArtifactRow[];
+  sessionEvents: SessionEventRow[];
   /** uuid → stdout 꼬리. tool_result와 같은 키를 쓴다. */
   stdoutTails: Map<string, string>;
 }
@@ -27,6 +29,18 @@ interface ToolUseBlock {
   input?: Record<string, unknown>;
   tool_use_id?: string;
   is_error?: boolean;
+}
+
+const INTERRUPT_MARKER = "Request interrupted by user";
+
+function hasInterruptMarker(content: unknown): boolean {
+  if (typeof content === "string") return content.includes(INTERRUPT_MARKER);
+  if (!Array.isArray(content)) return false;
+  return content.some((block) => {
+    if (block === null || typeof block !== "object") return false;
+    const text = (block as { text?: unknown }).text;
+    return typeof text === "string" && text.includes(INTERRUPT_MARKER);
+  });
 }
 
 function asBlocks(content: unknown): ToolUseBlock[] {
@@ -73,7 +87,11 @@ export function extractFacts(
   const toolCalls: ToolCallRow[] = [];
   const toolResults: ToolResultRow[] = [];
   const artifacts: ArtifactRow[] = [];
+  const sessionEvents: SessionEventRow[] = [];
   const stdoutTails = new Map<string, string>();
+  const turnsBySession = new Map<string, number>();
+  // 큐 개입이 주행 중인지 판정하려면 직전 assistant 응답이 도구 호출로 끝났는지 알아야 한다.
+  const lastStopReason = new Map<string, string | null>();
   // tool_result가 tool_use보다 뒤에 오므로 짝을 맞출 때까지 상태를 들고 있는다.
   const resultStatus = new Map<
     string,
@@ -97,6 +115,7 @@ export function extractFacts(
         entrypoint: null,
         execMode: "unknown",
         skillsJson: "[]",
+        assistantTurns: 0,
       };
       sessions.set(sessionId, session);
       skillsBySession.set(sessionId, new Set());
@@ -121,6 +140,23 @@ export function extractFacts(
       skillsBySession.get(sessionId)?.add(entry.attributionSkill);
     }
 
+    if (entry.type === "queue-operation") {
+      const op = entry.operation;
+      if (op === "enqueue") {
+        // 도구 호출 중에 사람이 자판을 친 것. 도구 체인을 끊지 않으므로 interrupt에 안 잡힌다.
+        const midflight = lastStopReason.get(sessionId) === "tool_use";
+        sessionEvents.push({
+          sessionId,
+          sourceFile,
+          kind: midflight ? "queue_enqueue_midflight" : "queue_enqueue",
+          ts,
+        });
+      } else if (op === "remove") {
+        sessionEvents.push({ sessionId, sourceFile, kind: "queue_remove", ts });
+      }
+      continue;
+    }
+
     if (entry.type === "pr-link" && entry.prNumber !== undefined) {
       artifacts.push({
         sessionId,
@@ -132,6 +168,8 @@ export function extractFacts(
     }
 
     if (entry.type === "assistant") {
+      turnsBySession.set(sessionId, (turnsBySession.get(sessionId) ?? 0) + 1);
+      lastStopReason.set(sessionId, entry.message?.stop_reason ?? null);
       for (const block of asBlocks(entry.message?.content)) {
         if (block.type !== "tool_use") continue;
         const seq = (seqBySession.get(sessionId) ?? 0) + 1;
@@ -172,12 +210,22 @@ export function extractFacts(
 
     if (entry.type !== "user") continue;
 
+    // 중단 표식은 문자열 content에도 오고 text 블록 안에도 온다. 둘 다 봐야 한다.
+    if (hasInterruptMarker(entry.message?.content)) {
+      sessionEvents.push({ sessionId, sourceFile, kind: "interrupt", ts });
+    }
+
     const denialKind = entry.toolDenialKind ?? null;
     for (const block of asBlocks(entry.message?.content)) {
       if (block.type !== "tool_result") continue;
       const id = block.tool_use_id;
       if (id === undefined) continue;
-      const result = extractToolResult(sessionId, sourceFile, id, entry.toolUseResult);
+      const result = extractToolResult(
+        sessionId,
+        sourceFile,
+        id,
+        entry.toolUseResult,
+      );
       toolResults.push(result);
       const tail = extractStdoutTail(entry.toolUseResult);
       if (tail !== null) stdoutTails.set(id, tail);
@@ -200,8 +248,19 @@ export function extractFacts(
     const session = sessions.get(sessionId);
     if (session !== undefined) session.skillsJson = JSON.stringify([...skills]);
   }
+  for (const [sessionId, turns] of turnsBySession) {
+    const session = sessions.get(sessionId);
+    if (session !== undefined) session.assistantTurns = turns;
+  }
 
-  return { sessions, toolCalls, toolResults, artifacts, stdoutTails };
+  return {
+    sessions,
+    toolCalls,
+    toolResults,
+    artifacts,
+    sessionEvents,
+    stdoutTails,
+  };
 }
 
 function extractToolResult(

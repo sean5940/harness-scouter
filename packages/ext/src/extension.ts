@@ -32,11 +32,25 @@ interface PeriodReport {
   axes: AxisDelta[];
 }
 
+interface DiagnosisItem {
+  subject: string;
+  count: number;
+  sessions: string[];
+}
+
+interface Diagnosis {
+  axis: string;
+  headline: string;
+  items: DiagnosisItem[];
+}
+
 interface ScouterJson {
   axisLabels: Record<string, string>;
   periodCount: number;
   latestClosed: PeriodReport | null;
   latest: PeriodReport | null;
+  diagnoses?: Diagnosis[];
+  leakCount?: number;
 }
 
 function config(): vscode.WorkspaceConfiguration {
@@ -89,16 +103,19 @@ async function callCli(
   return stdout;
 }
 
+/**
+ * 상태바는 누수 건수만 보여준다.
+ *
+ * 축 점수와 delta를 띄우지 않는 이유는 M0.5 게이트에서 축의 구간 간 안정성이 없다는
+ * 것이 확인됐기 때문이다(설계 8.1). 잡음을 화살표로 그리면 없는 개선을 읽게 된다.
+ */
 function formatStatus(json: ScouterJson): string {
   const report = json.latestClosed;
   if (report === null) return "$(telescope) Scouter: 스캔 필요";
-
-  const moved = report.axes.filter((a) => a.delta !== null);
-  const up = moved.filter((a) => (a.delta ?? 0) > 0).length;
-  const down = moved.filter((a) => (a.delta ?? 0) < 0).length;
+  const leaks = json.leakCount ?? 0;
   const cov = report.coverage;
   const covText = cov === null ? "" : ` · 커버리지 ${(cov * 100).toFixed(0)}%`;
-  return `$(telescope) ▲${up} ▼${down}${covText}`;
+  return `$(telescope) 누수 ${leaks}건${covText}`;
 }
 
 function statusTooltip(json: ScouterJson): vscode.MarkdownString {
@@ -111,17 +128,13 @@ function statusTooltip(json: ScouterJson): vscode.MarkdownString {
   md.appendMarkdown(
     `**구간 #${report.period.index}** · 세션 ${report.period.sessionIds.length}개\n\n`,
   );
-  for (const axis of report.axes) {
-    const label = json.axisLabels[axis.key] ?? axis.key;
-    const value =
-      axis.current === null ? "—" : `${(axis.current * 100).toFixed(0)}%`;
-    const delta =
-      axis.delta === null
-        ? ""
-        : ` (${axis.delta >= 0 ? "+" : ""}${(axis.delta * 100).toFixed(1)}p)`;
-    const warn = axis.unfilled ? " ⚠" : "";
-    md.appendMarkdown(`- ${label}: ${value}${delta}${warn}\n`);
+  for (const d of json.diagnoses ?? []) {
+    const total = d.items.reduce((sum, i) => sum + i.count, 0);
+    if (total === 0) continue;
+    const label = json.axisLabels[d.axis] ?? d.axis;
+    md.appendMarkdown(`- ${label}: ${total}건 (${d.headline})\n`);
   }
+  md.appendMarkdown("\n클릭하면 근거 파일과 세션을 봅니다.");
   return md;
 }
 

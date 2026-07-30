@@ -482,3 +482,73 @@ export function classifyBash(
     isCommitAmend,
   };
 }
+
+/**
+ * 어느 세그먼트가 판정을 유발했는지 돌려준다.
+ *
+ * 진단 화면이 명령의 첫 줄을 보여주면 `cd /repo`가 최다 위반으로 올라가 아무 정보가 없다.
+ * 실제로 걸린 세그먼트를 보여줘야 고칠 대상이 보인다.
+ */
+export function offendingSegments(commandRaw: string | null | undefined): {
+  sourceRead: string[];
+  fileWrite: string[];
+  recursiveSearch: string[];
+} {
+  const out = { sourceRead: [] as string[], fileWrite: [] as string[], recursiveSearch: [] as string[] };
+  if (commandRaw === null || commandRaw === undefined || commandRaw === "") return out;
+
+  const stripped = stripHeredocBodies(commandRaw);
+  const segments = splitSegments(stripped);
+  const pipelineHasSourcePath = segments.some((seg) =>
+    seg.split(/\s+/).some((t) => !t.startsWith("-") && isReadableSourcePath(t)),
+  );
+  const scriptWritesFile = SCRIPT_WRITES_FILE.test(commandRaw);
+
+  for (const segment of segments) {
+    const tokens = meaningfulTokens(segment);
+    if (tokens.length === 0) continue;
+    if (isFormatterSegment(tokens)) continue;
+
+    if (isRecursiveSearchSegment(tokens)) out.recursiveSearch.push(segment);
+
+    const write = fileWriteOf(segment, tokens, scriptWritesFile);
+    if (write !== null && !isScratchTarget(write.target)) {
+      out.fileWrite.push(write.target ?? segment);
+    } else if (write === null) {
+      const read = sourceReadOf(tokens, pipelineHasSourcePath);
+      if (read.matched && !isScratchTarget(read.target)) {
+        out.sourceRead.push(read.target ?? segment);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * 검색 명령에서 찾으려는 대상만 뽑는다.
+ *
+ * 명령 전체를 비교하면 같은 것을 찾는 재검색이 거의 잡히지 않는다(실측 7/2364).
+ * 에이전트는 검색어는 유지하고 경로·플래그를 바꿔가며 다시 돌리기 때문이다.
+ * 대상만 정규화해 비교하면 "한 번에 못 찾았다"가 보인다.
+ */
+export function searchTermOf(commandRaw: string | null | undefined): string | null {
+  if (commandRaw === null || commandRaw === undefined) return null;
+  for (const segment of splitSegments(stripHeredocBodies(commandRaw))) {
+    const tokens = meaningfulTokens(segment);
+    if (!isRecursiveSearchSegment(tokens)) continue;
+
+    const head = tokens[0]?.split("/").pop() ?? "";
+    if (head === "find") {
+      const nameIndex = tokens.findIndex((t) => /^-i?(name|regex)$/.test(t));
+      const pattern = nameIndex >= 0 ? tokens[nameIndex + 1] : undefined;
+      if (pattern !== undefined) return pattern.replace(/['"]/g, "").toLowerCase();
+      continue;
+    }
+    // grep·rg는 첫 비옵션 인자가 패턴이다.
+    const pattern = tokens
+      .slice(1)
+      .find((t) => !t.startsWith("-") && !/^[.~/]/.test(t));
+    if (pattern !== undefined) return pattern.replace(/['"]/g, "").toLowerCase();
+  }
+  return null;
+}

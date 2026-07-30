@@ -51,6 +51,8 @@ export interface SessionRow {
   entrypoint: string | null;
   execMode: ExecMode;
   skillsJson: string;
+  /** assistant 턴 수. 개입 빈도를 턴당으로 정규화할 때 쓴다. */
+  assistantTurns: number;
 }
 
 /**
@@ -89,6 +91,18 @@ export interface ToolResultRow {
   /** subagent 결과의 내부 도구 호출 합계. 커버리지 배지에 쓴다 (설계 9절). */
   subagentToolCalls: number | null;
   subagentEditFiles: number | null;
+}
+
+/** 축이 아니라 능력치 합성에 쓰는 세션 단위 이벤트. */
+export interface SessionEventRow {
+  sessionId: string;
+  sourceFile: string;
+  kind:
+    | "interrupt"
+    | "queue_enqueue"
+    | "queue_enqueue_midflight"
+    | "queue_remove";
+  ts: string | null;
 }
 
 export interface ArtifactRow {

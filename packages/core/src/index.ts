@@ -11,3 +11,5 @@ export * from './radar.js';
 export * from './diagnose.js';
 export * from './bash.js';
 export * from './gate.js';
+export * from './reportHtml.js';
+export * from './stats.js';
