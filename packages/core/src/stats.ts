@@ -8,7 +8,7 @@ import {
   type AxisCount,
   type CoverageCount,
 } from "./metrics.js";
-import { emptyEvents, type Period } from "./periods.js";
+import { emptyEvents, emptyUsage, type Period } from "./periods.js";
 
 /**
  * 능력치 6개.
@@ -55,7 +55,7 @@ export const STAT_ORDER: StatKey[] = [
 
 export const STAT_LABELS: Record<StatKey, string> = {
   retrieval: "탐색력",
-  context: "컨텍스트 관리",
+  context: "컨텍스트 효율",
   verification: "검증력",
   autonomy: "자율성",
   delivery: "완수력",
@@ -64,7 +64,7 @@ export const STAT_LABELS: Record<StatKey, string> = {
 
 export const STAT_QUESTIONS: Record<StatKey, string> = {
   retrieval: "원하는 정보를 정확히 찾나",
-  context: "필요한 만큼만 읽고 기억하나",
+  context: "필요한 만큼만 읽고 토큰을 아끼나",
   verification: "주장 전에 확인하나",
   autonomy: "사람 개입 없이 완주하나",
   delivery: "산출물까지 도달하나",
@@ -79,6 +79,31 @@ export const STAT_QUESTIONS: Record<StatKey, string> = {
  * 비율이 아니라 발생률이라 1로 정규화할 자연스러운 분모가 없기 때문이다.
  */
 const AUTONOMY_CAP_PER_100_TURNS = 6;
+
+/**
+ * 발생률을 0~1 점수로 옮긴다.
+ *
+ * 비율 지표와 달리 토큰은 1로 정규화할 자연스러운 분모가 없다. 관측 분포의 양 끝을
+ * 기준점으로 잡아 그 사이를 선형으로 편다. 기준점은 코드에 고정하고 근거를 남긴다.
+ */
+function rateScore(value: number, best: number, worst: number): number {
+  if (!Number.isFinite(value)) return 0;
+  const clamped = Math.min(Math.max(value, best), worst);
+  return (worst - clamped) / (worst - best);
+}
+
+/**
+ * 토큰 기준점. 구간 29개 실측 분포에서 잡았다.
+ *
+ * 재사용률(cache_read 비중)은 쓰지 않는다. 전수 0.967에 스프레드 0.038로 포화라
+ * 백분위를 내도 잡음만 남는다. 같은 이유로 초기 설계의 cache_read 축도 폐기됐다.
+ * 편집당 토큰도 뺐다. 22배로 가장 잘 퍼지지만 코드를 안 고치는 planning 세션이
+ * 통째로 불리해져 작업 종류가 점수를 지배한다.
+ */
+const OUTPUT_PER_TOOL_CALL_BEST = 500;
+const OUTPUT_PER_TOOL_CALL_WORST = 4000;
+const CONTEXT_PER_REQUEST_BEST = 100_000;
+const CONTEXT_PER_REQUEST_WORST = 400_000;
 
 function ratio(count: AxisCount): number | null {
   return count.den === 0 ? null : count.num / count.den;
@@ -132,6 +157,16 @@ export function computeStats(period: Period): StatValue[] {
         "읽은 것 기억하기",
         axisScore("readRevisit", a.readRevisit),
         a.readRevisit.den,
+      ),
+      component(
+        "응답 간결성",
+        outputPerToolCall(period),
+        a.instrumentedChannel.den + a.readRevisit.den,
+      ),
+      component(
+        "컨텍스트 경량성",
+        contextPerRequest(period),
+        period.usage.requests,
       ),
     ],
     verification: [
@@ -195,6 +230,28 @@ function autonomyScore(period: Period): number | null {
     period.events.userRejected;
   const per100 = (interventions / turns) * 100;
   return Math.max(0, 1 - per100 / AUTONOMY_CAP_PER_100_TURNS);
+}
+
+/** 도구 호출 한 번을 내기 위해 얼마나 길게 생성했는가. 짧을수록 좋다. */
+function outputPerToolCall(period: Period): number | null {
+  const calls =
+    period.axes.instrumentedChannel.den + period.axes.readRevisit.den;
+  if (calls === 0 || period.usage.output === 0) return null;
+  return rateScore(
+    period.usage.output / calls,
+    OUTPUT_PER_TOOL_CALL_BEST,
+    OUTPUT_PER_TOOL_CALL_WORST,
+  );
+}
+
+/** 요청마다 얼마나 무거운 맥락을 들고 다니는가. 가벼울수록 좋다. */
+function contextPerRequest(period: Period): number | null {
+  if (period.usage.requests === 0) return null;
+  return rateScore(
+    period.usage.cacheRead / period.usage.requests,
+    CONTEXT_PER_REQUEST_BEST,
+    CONTEXT_PER_REQUEST_WORST,
+  );
 }
 
 export type Rank = "S" | "A" | "B" | "C" | "D" | "-";
@@ -347,6 +404,7 @@ export function mergePeriods(periods: Period[]): Period | null {
   const axes = emptyAxes();
   const extras = emptyExtras();
   const events = emptyEvents();
+  const usage = emptyUsage();
   const delivery = { num: 0, den: 0 };
   const coverage: CoverageCount = { observable: 0, offChannel: 0, opaque: 0 };
   const sessionIds: string[] = [];
@@ -357,6 +415,11 @@ export function mergePeriods(periods: Period[]): Period | null {
     events.interrupt += p.events.interrupt;
     events.queueMidflight += p.events.queueMidflight;
     events.userRejected += p.events.userRejected;
+    usage.input += p.usage.input;
+    usage.output += p.usage.output;
+    usage.cacheRead += p.usage.cacheRead;
+    usage.cacheCreation += p.usage.cacheCreation;
+    usage.requests += p.usage.requests;
     delivery.num += p.delivery.num;
     delivery.den += p.delivery.den;
     coverage.observable += p.coverage.observable;
@@ -373,6 +436,7 @@ export function mergePeriods(periods: Period[]): Period | null {
     axes,
     extras,
     events,
+    usage,
     delivery,
     coverage,
     closedByBudget: true,

@@ -63,6 +63,18 @@ CREATE TABLE IF NOT EXISTS tool_result (
   PRIMARY KEY (session_id, uuid)
 );
 
+CREATE TABLE IF NOT EXISTS usage (
+  session_id     TEXT NOT NULL,
+  request_id     TEXT NOT NULL,
+  input          INTEGER NOT NULL,
+  output         INTEGER NOT NULL,
+  cache_read     INTEGER NOT NULL,
+  cache_creation INTEGER NOT NULL,
+  ts             TEXT,
+  source_file    TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (session_id, request_id)
+);
+
 CREATE TABLE IF NOT EXISTS session_event (
   session_id  TEXT NOT NULL,
   kind        TEXT NOT NULL,
@@ -147,6 +159,7 @@ export class ScouterDb {
         this.db
           .prepare("DELETE FROM session_event WHERE source_file = ?")
           .run(path);
+        this.db.prepare("DELETE FROM usage WHERE source_file = ?").run(path);
       }
 
       const upsertSession = this.db.prepare(`
@@ -239,6 +252,25 @@ export class ScouterDb {
         insertEvent.run(e.sessionId, e.kind, e.ts, path, index);
       });
 
+      // requestId가 이미 있으면 무시한다. 같은 응답이 여러 줄로 오기 때문이다.
+      const insertUsage = this.db.prepare(
+        `INSERT OR IGNORE INTO usage
+           (session_id, request_id, input, output, cache_read, cache_creation, ts, source_file)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      for (const u of facts.usages) {
+        insertUsage.run(
+          u.sessionId,
+          u.requestId,
+          u.input,
+          u.output,
+          u.cacheRead,
+          u.cacheCreation,
+          u.ts,
+          path,
+        );
+      }
+
       this.db
         .prepare(
           `INSERT INTO file_cursor (path, mtime_ms, byte_offset, parsed_at)
@@ -294,6 +326,32 @@ export class ScouterDb {
     return out;
   }
 
+  /** 세션별 토큰 사용량 합계. 토큰 효율이 쓴다. */
+  usageOf(sessionId: string): {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheCreation: number;
+    requests: number;
+  } {
+    const row = this.db
+      .prepare(
+        `SELECT COALESCE(SUM(input),0) AS input, COALESCE(SUM(output),0) AS output,
+                COALESCE(SUM(cache_read),0) AS cacheRead,
+                COALESCE(SUM(cache_creation),0) AS cacheCreation,
+                COUNT(*) AS requests
+         FROM usage WHERE session_id = ?`,
+      )
+      .get(sessionId) as unknown as {
+      input: number;
+      output: number;
+      cacheRead: number;
+      cacheCreation: number;
+      requests: number;
+    };
+    return row;
+  }
+
   /** 세션별 산출물 종류. 완수력이 쓴다. */
   artifactKindsOf(sessionId: string): Set<string> {
     const rows = this.db
@@ -309,6 +367,7 @@ export class ScouterDb {
       "tool_result",
       "artifact",
       "session_event",
+      "usage",
       "file_cursor",
     ];
     const out: Record<string, number> = {};

@@ -18,6 +18,19 @@ import {
   type SessionMetrics,
 } from "./metrics.js";
 
+/** 토큰 사용량. 토큰 효율 합성이 쓴다. */
+export interface TokenUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheCreation: number;
+  requests: number;
+}
+
+export function emptyUsage(): TokenUsage {
+  return { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, requests: 0 };
+}
+
 /** 세션 단위 개입 이벤트 건수. 자율성 합성이 쓴다. */
 export interface SessionEvents {
   interrupt: number;
@@ -37,6 +50,7 @@ export interface Period {
   axes: AxisCounts;
   extras: ExtraCounts;
   events: SessionEvents;
+  usage: TokenUsage;
   /** 코드를 고친 세션 중 커밋이나 PR까지 간 비율. 완수력이 쓴다. */
   delivery: { num: number; den: number };
   coverage: CoverageCount;
@@ -53,6 +67,7 @@ export interface SessionForPeriod {
   startedAt: string;
   endedAt: string | null;
   events: SessionEvents;
+  usage: TokenUsage;
   /** 이 세션이 커밋이나 PR을 남겼는지 */
   reachedArtifact: boolean;
 }
@@ -77,6 +92,7 @@ export function segmentIntoPeriods(sessions: SessionForPeriod[]): Period[] {
   let axes = emptyAxes();
   let extras = emptyExtras();
   let events = emptyEvents();
+  let usage = emptyUsage();
   let delivery = { num: 0, den: 0 };
   let coverage: CoverageCount = { observable: 0, offChannel: 0, opaque: 0 };
   let members: SessionForPeriod[] = [];
@@ -93,6 +109,7 @@ export function segmentIntoPeriods(sessions: SessionForPeriod[]): Period[] {
       axes,
       extras,
       events,
+      usage,
       delivery,
       coverage,
       closedByBudget,
@@ -102,6 +119,7 @@ export function segmentIntoPeriods(sessions: SessionForPeriod[]): Period[] {
     axes = emptyAxes();
     extras = emptyExtras();
     events = emptyEvents();
+    usage = emptyUsage();
     delivery = { num: 0, den: 0 };
     coverage = { observable: 0, offChannel: 0, opaque: 0 };
     members = [];
@@ -113,6 +131,11 @@ export function segmentIntoPeriods(sessions: SessionForPeriod[]): Period[] {
     events.interrupt += session.events.interrupt;
     events.queueMidflight += session.events.queueMidflight;
     events.userRejected += session.events.userRejected;
+    usage.input += session.usage.input;
+    usage.output += session.usage.output;
+    usage.cacheRead += session.usage.cacheRead;
+    usage.cacheCreation += session.usage.cacheCreation;
+    usage.requests += session.usage.requests;
     if (session.metrics.extras.codeEdits > 0) {
       delivery.den += 1;
       if (session.reachedArtifact) delivery.num += 1;

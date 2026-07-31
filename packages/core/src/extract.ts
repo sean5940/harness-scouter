@@ -1,6 +1,7 @@
 import type {
   ArtifactRow,
   SessionEventRow,
+  UsageRow,
   ExecMode,
   RawEntry,
   SessionRow,
@@ -18,6 +19,7 @@ export interface ExtractedFacts {
   toolResults: ToolResultRow[];
   artifacts: ArtifactRow[];
   sessionEvents: SessionEventRow[];
+  usages: UsageRow[];
   /** uuid → stdout 꼬리. tool_result와 같은 키를 쓴다. */
   stdoutTails: Map<string, string>;
 }
@@ -88,6 +90,8 @@ export function extractFacts(
   const toolResults: ToolResultRow[] = [];
   const artifacts: ArtifactRow[] = [];
   const sessionEvents: SessionEventRow[] = [];
+  const usages: UsageRow[] = [];
+  const seenRequests = new Set<string>();
   const stdoutTails = new Map<string, string>();
   const turnsBySession = new Map<string, number>();
   // 큐 개입이 주행 중인지 판정하려면 직전 assistant 응답이 도구 호출로 끝났는지 알아야 한다.
@@ -170,6 +174,25 @@ export function extractFacts(
     if (entry.type === "assistant") {
       turnsBySession.set(sessionId, (turnsBySession.get(sessionId) ?? 0) + 1);
       lastStopReason.set(sessionId, entry.message?.stop_reason ?? null);
+
+      const usage = entry.message?.usage;
+      const requestId = entry.requestId;
+      if (usage !== undefined && requestId !== undefined) {
+        const key = `${sessionId}:${requestId}`;
+        if (!seenRequests.has(key)) {
+          seenRequests.add(key);
+          usages.push({
+            sessionId,
+            sourceFile,
+            requestId,
+            input: usage.input_tokens ?? 0,
+            output: usage.output_tokens ?? 0,
+            cacheRead: usage.cache_read_input_tokens ?? 0,
+            cacheCreation: usage.cache_creation_input_tokens ?? 0,
+            ts,
+          });
+        }
+      }
       for (const block of asBlocks(entry.message?.content)) {
         if (block.type !== "tool_use") continue;
         const seq = (seqBySession.get(sessionId) ?? 0) + 1;
@@ -259,6 +282,7 @@ export function extractFacts(
     toolResults,
     artifacts,
     sessionEvents,
+    usages,
     stdoutTails,
   };
 }

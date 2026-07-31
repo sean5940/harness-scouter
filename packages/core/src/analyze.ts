@@ -52,7 +52,9 @@ export function analyze(db: ScouterDb, filter: AnalysisFilter = {}): Analysis {
         userRejected: calls.filter((c) => c.denial_kind === "user-rejected")
           .length,
       },
-      reachedArtifact: artifactKinds.has("commit") || artifactKinds.has("pr"),
+      usage: db.usageOf(meta.session_id),
+      reachedArtifact:
+        artifactKinds.has("commit") || artifactKinds.has("pr"),
     });
   }
 

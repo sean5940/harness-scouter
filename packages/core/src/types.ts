@@ -12,6 +12,7 @@ export interface RawEntry {
   isSidechain?: boolean;
   isMeta?: boolean;
   attributionSkill?: string;
+  requestId?: string;
   agentId?: string;
   toolDenialKind?: string;
   promptSource?: string;
@@ -91,6 +92,23 @@ export interface ToolResultRow {
   /** subagent 결과의 내부 도구 호출 합계. 커버리지 배지에 쓴다 (설계 9절). */
   subagentToolCalls: number | null;
   subagentEditFiles: number | null;
+}
+
+/**
+ * API 응답 하나의 토큰 사용량.
+ *
+ * 한 응답이 콘텐츠 블록마다 같은 usage를 싣고 오므로 requestId로 중복을 제거해야 한다.
+ * 안 하면 토큰이 2.7배로 부풀려진다(실측 5,795행 → 고유 2,147).
+ */
+export interface UsageRow {
+  sessionId: string;
+  sourceFile: string;
+  requestId: string;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheCreation: number;
+  ts: string | null;
 }
 
 /** 축이 아니라 능력치 합성에 쓰는 세션 단위 이벤트. */
