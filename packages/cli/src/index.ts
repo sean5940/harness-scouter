@@ -10,6 +10,8 @@ import {
   diagnosePeriod,
   buildStatWindow,
   mergePeriods,
+  adviseAll,
+  renderStatHtml,
   runGate,
   renderDiagnosisHtml,
   defaultDbPath,
@@ -27,9 +29,13 @@ const USAGE = `harness-scouter
   scouter report [--db <path>] [--project <s>]  최신 구간의 6축 원시값을 본다
   scouter periods [--db <path>]                 구간 목록을 본다
   scouter diag [--db <path>]                    최신 구간의 누수 지점과 근거 세션을 본다
+  scouter guide [--db <path>] [--all]           능력치별 병목과 올리는 법
+  scouter label <세션id> good|bad [--note <s>]   세션에 라벨을 붙인다
+  scouter labels [--db <path>]                  붙인 라벨을 본다
   scouter gate [--db <path>]                    M0.5 재현성 게이트를 돌린다
   scouter json [--db <path>]                    확장이 읽을 JSON을 낸다
-  scouter html [--db <path>] [--out <path>]     누수 진단을 HTML로 낸다 (--out - 이면 stdout)
+  scouter html [--db <path>] [--out <path>] [--all] [--diag]
+                                                스테이터스 창을 HTML로 낸다 (--diag 면 누수 진단)
 `;
 
 function parseArgs(argv: string[]): {
@@ -252,6 +258,90 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (command === "guide") {
+    const db = openDb(flags);
+    const result = analyze(db);
+    const closed = result.periods.filter((p) => !p.open);
+    const target = flags.has("all") ? mergePeriods(closed) : closed.at(-1);
+    if (target === undefined || target === null) {
+      process.stdout.write("닫힌 구간이 없습니다.\n");
+      db.close();
+      return;
+    }
+    const w = buildStatWindow(target, closed, {
+      rankByAbsoluteScore: flags.has("all"),
+    });
+    process.stdout.write(
+      `\n  성장 가이드 — 개인 최고까지의 격차가 큰 순서\n\n`,
+    );
+    for (const advice of adviseAll(w.stats)) {
+      const gap = advice.gapToBest;
+      if (gap === null || gap < 1) continue;
+      process.stdout.write(
+        `  ${advice.label}  ${advice.score?.toFixed(0) ?? "—"} → 최고 ${advice.best?.toFixed(0) ?? "—"}  (+${gap.toFixed(0)} 여지)\n`,
+      );
+      const b = advice.bottleneck;
+      const c = advice.criterion;
+      if (b !== null) {
+        process.stdout.write(
+          `    병목: ${b.label} ${b.value === null ? "—" : (b.value * 100).toFixed(0)}점  n=${b.denominator.toLocaleString()}\n`,
+        );
+      }
+      if (c !== null) {
+        process.stdout.write(`    기준: ${c.measures}\n`);
+        process.stdout.write(`    이유: ${c.whyItMatters}\n`);
+        for (const a of c.actions) process.stdout.write(`      + ${a}\n`);
+        for (const a of c.antipatterns) process.stdout.write(`      - ${a}\n`);
+      }
+      process.stdout.write("\n");
+    }
+    db.close();
+    return;
+  }
+
+  if (command === "label") {
+    const db = openDb(flags);
+    const rest = process.argv.slice(3).filter((t) => !t.startsWith("--"));
+    const prefix = rest[0];
+    const label = rest[1];
+    if (prefix === undefined || (label !== "good" && label !== "bad")) {
+      process.stdout.write("사용법: scouter label <세션id> good|bad [--note <메모>]\n");
+      db.close();
+      return;
+    }
+    const sessionId = db.resolveSessionId(prefix);
+    if (sessionId === null) {
+      process.stdout.write(`세션을 특정하지 못했습니다: ${prefix}\n`);
+      db.close();
+      return;
+    }
+    db.setLabel(sessionId, label, flags.get("note") ?? null);
+    process.stdout.write(`${sessionId.slice(0, 8)} → ${label}\n`);
+    db.close();
+    return;
+  }
+
+  if (command === "labels") {
+    const db = openDb(flags);
+    const rows = db.listLabels();
+    const good = rows.filter((r) => r.label === "good").length;
+    process.stdout.write(
+      `라벨 ${rows.length}건 (good ${good} / bad ${rows.length - good})\n\n`,
+    );
+    for (const row of rows) {
+      process.stdout.write(
+        `  ${row.session_id.slice(0, 8)}  ${row.label.padEnd(4)}  ${row.labeled_at}  ${row.note ?? ""}\n`,
+      );
+    }
+    if (rows.length < 30) {
+      process.stdout.write(
+        `\n  M1.5 타당성 게이트는 30건부터 의미가 있습니다. ${30 - rows.length}건 남았습니다.\n`,
+      );
+    }
+    db.close();
+    return;
+  }
+
   if (command === "gate") {
     const db = openDb(flags);
     const result = analyze(db);
@@ -334,7 +424,18 @@ async function main(): Promise<void> {
       return;
     }
     const out = flags.get("out") ?? "/tmp/harness-scouter.html";
-    const html = renderDiagnosisHtml(report, diagnosePeriod(db, report.period));
+    const closedForHtml = result.periods.filter((p) => !p.open);
+    const target = flags.has("diag")
+      ? null
+      : flags.has("all")
+        ? mergePeriods(closedForHtml)
+        : closedForHtml.at(-1);
+    const html =
+      target === null || target === undefined
+        ? renderDiagnosisHtml(report, diagnosePeriod(db, report.period))
+        : renderStatHtml(buildStatWindow(target, closedForHtml, {
+            rankByAbsoluteScore: flags.has("all"),
+          }), { allTime: flags.has("all") });
     if (out === "-") {
       // 확장이 파이프로 받아 Webview에 그대로 넣는다.
       process.stdout.write(html);
@@ -361,6 +462,13 @@ async function main(): Promise<void> {
           periodCount: result.periods.length,
           latestClosed: result.latestClosed,
           latest: result.latest,
+          allTime: (() => {
+            const closed = result.periods.filter((p) => !p.open);
+            const merged = mergePeriods(closed);
+            return merged === null
+              ? null
+              : buildStatWindow(merged, closed, { rankByAbsoluteScore: true });
+          })(),
           diagnoses,
           leakCount: diagnoses.reduce(
             (sum, d) => sum + d.items.reduce((s, i) => s + i.count, 0),

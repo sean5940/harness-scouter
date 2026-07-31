@@ -44,6 +44,32 @@ interface Diagnosis {
   items: DiagnosisItem[];
 }
 
+interface StatComponentJson {
+  label: string;
+  value: number | null;
+  denominator: number;
+}
+
+interface StatJson {
+  key: string;
+  label: string;
+  question: string;
+  score: number | null;
+  rank: string;
+  best: number | null;
+  components: StatComponentJson[];
+}
+
+interface StatWindowJson {
+  level: number;
+  overall: number | null;
+  overallRank: string;
+  sessionCount: number;
+  coverage: number | null;
+  judgeable: boolean;
+  stats: StatJson[];
+}
+
 interface ScouterJson {
   axisLabels: Record<string, string>;
   periodCount: number;
@@ -51,6 +77,7 @@ interface ScouterJson {
   latest: PeriodReport | null;
   diagnoses?: Diagnosis[];
   leakCount?: number;
+  allTime?: StatWindowJson | null;
 }
 
 function config(): vscode.WorkspaceConfiguration {
@@ -110,12 +137,9 @@ async function callCli(
  * 것이 확인됐기 때문이다(설계 8.1). 잡음을 화살표로 그리면 없는 개선을 읽게 된다.
  */
 function formatStatus(json: ScouterJson): string {
-  const report = json.latestClosed;
-  if (report === null) return "$(telescope) Scouter: 스캔 필요";
-  const leaks = json.leakCount ?? 0;
-  const cov = report.coverage;
-  const covText = cov === null ? "" : ` · 커버리지 ${(cov * 100).toFixed(0)}%`;
-  return `$(telescope) 누수 ${leaks}건${covText}`;
+  const all = json.allTime;
+  if (all === null || all === undefined) return "$(telescope) Scouter: 스캔 필요";
+  return `$(telescope) Lv.${all.level} ${all.overallRank}`;
 }
 
 function statusTooltip(json: ScouterJson): vscode.MarkdownString {
@@ -125,16 +149,20 @@ function statusTooltip(json: ScouterJson): vscode.MarkdownString {
     md.appendMarkdown("아직 닫힌 구간이 없습니다. 스캔을 먼저 돌리세요.");
     return md;
   }
-  md.appendMarkdown(
-    `**구간 #${report.period.index}** · 세션 ${report.period.sessionIds.length}개\n\n`,
-  );
-  for (const d of json.diagnoses ?? []) {
-    const total = d.items.reduce((sum, i) => sum + i.count, 0);
-    if (total === 0) continue;
-    const label = json.axisLabels[d.axis] ?? d.axis;
-    md.appendMarkdown(`- ${label}: ${total}건 (${d.headline})\n`);
+  const all = json.allTime;
+  if (all === null || all === undefined) {
+    md.appendMarkdown("아직 집계할 구간이 없습니다.");
+    return md;
   }
-  md.appendMarkdown("\n클릭하면 근거 파일과 세션을 봅니다.");
+  md.appendMarkdown(
+    `**전수 집계** · 세션 ${all.sessionCount}개 · 종합 ${all.overall?.toFixed(0) ?? "—"} ${all.overallRank}\n\n`,
+  );
+  for (const stat of all.stats) {
+    const value = stat.score === null ? "—" : stat.score.toFixed(0);
+    const best = stat.best === null ? "" : ` (최고 ${stat.best.toFixed(0)})`;
+    md.appendMarkdown(`- ${stat.label}: **${value}** ${stat.rank}${best}\n`);
+  }
+  md.appendMarkdown("\n클릭하면 스테이터스 창을 엽니다.");
   return md;
 }
 

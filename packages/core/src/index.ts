@@ -13,3 +13,5 @@ export * from './bash.js';
 export * from './gate.js';
 export * from './reportHtml.js';
 export * from './stats.js';
+export * from './growth.js';
+export * from './statHtml.js';

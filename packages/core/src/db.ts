@@ -63,6 +63,13 @@ CREATE TABLE IF NOT EXISTS tool_result (
   PRIMARY KEY (session_id, uuid)
 );
 
+CREATE TABLE IF NOT EXISTS session_label (
+  session_id TEXT PRIMARY KEY,
+  label      TEXT NOT NULL,
+  note       TEXT,
+  labeled_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS usage (
   session_id     TEXT NOT NULL,
   request_id     TEXT NOT NULL,
@@ -324,6 +331,50 @@ export class ScouterDb {
     const out: Record<string, number> = {};
     for (const row of rows) out[row.kind] = row.n;
     return out;
+  }
+
+  /**
+   * 세션에 좋음·나쁨 라벨을 붙인다.
+   *
+   * 지금 등급은 내 이력 대비 위치일 뿐이라 좋은 세션과 상관된다는 근거가 없다.
+   * 쓰면서 라벨을 모아야 M1.5 타당성 게이트를 돌릴 수 있다. 배치 라벨링은 기억이
+   * 흐려진 세션을 억지로 판정하게 되므로 그때그때 찍는 쪽이 정확하다.
+   */
+  setLabel(sessionId: string, label: string, note: string | null): void {
+    this.db
+      .prepare(
+        `INSERT INTO session_label (session_id, label, note, labeled_at)
+         VALUES (?, ?, ?, datetime('now'))
+         ON CONFLICT(session_id) DO UPDATE SET
+           label = excluded.label, note = excluded.note, labeled_at = excluded.labeled_at`,
+      )
+      .run(sessionId, label, note);
+  }
+
+  listLabels(): Array<{
+    session_id: string;
+    label: string;
+    note: string | null;
+    labeled_at: string;
+  }> {
+    return this.db
+      .prepare(
+        "SELECT session_id, label, note, labeled_at FROM session_label ORDER BY labeled_at DESC",
+      )
+      .all() as unknown as Array<{
+      session_id: string;
+      label: string;
+      note: string | null;
+      labeled_at: string;
+    }>;
+  }
+
+  /** 앞자리만으로 세션을 찾는다. 진단 출력이 8자만 보여주기 때문이다. */
+  resolveSessionId(prefix: string): string | null {
+    const rows = this.db
+      .prepare("SELECT session_id FROM session WHERE session_id LIKE ? LIMIT 2")
+      .all(`${prefix}%`) as unknown as Array<{ session_id: string }>;
+    return rows.length === 1 ? (rows[0]?.session_id ?? null) : null;
   }
 
   /** 세션별 토큰 사용량 합계. 토큰 효율이 쓴다. */
