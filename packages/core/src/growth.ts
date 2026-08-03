@@ -56,7 +56,7 @@ export const COMPONENT_CRITERIA: Record<string, ComponentCriterion> = {
   },
   "내용 인덱스 우선": {
     measures:
-      "내용·관계를 찾을 때 qmd query·graphify 로 간 비율. `grep -r`·`rg`·`Grep` 도구가 분모의 나머지다. 조회 계열(`qmd get`·`status`)은 검색이 아니라 세지 않는다.",
+      "내용·관계를 찾을 때 qmd query·graphify 로 간 비율. MCP 도구와 CLI(`graphify explain`·`INDEX_PATH=… qmd query`)를 모두 센다. `grep -r`·`rg`·`Grep` 도구가 분모의 나머지다. 조회·진단 계열(`qmd get`·`status`·`bench`, `graphify stats`·`god`)은 검색이 아니라 세지 않는다.",
     whyItMatters:
       "전수 스캔은 결과가 많고 관련도 순서가 없어 읽는 토큰이 늘고, 찾은 뒤에도 어느 것이 맞는지 다시 골라야 한다.",
     actions: [

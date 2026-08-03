@@ -134,6 +134,44 @@ describe("탐색을 파일 찾기와 내용 찾기로 나눈다", () => {
     expect(m.extras.fileFind).toEqual({ num: 1, den: 2 });
   });
 
+  it("CLI 로 부른 graphify 도 인덱스 검색으로 센다", () => {
+    // 이 환경은 graphify 를 CLI 로 쓰는 것이 기본이라 MCP 도구 이름만 세면
+    // 실측 1,221건 중 8건만 잡힌다.
+    const m = computeSessionMetrics("s", [
+      bash(`cd /w/.agent && graphify explain "useSubscribeMutation"`),
+      bash(`(cd .agent && graphify query "membership plan")`),
+      bash(`grep -rn foo app/`),
+    ]);
+    expect(m.axes.indexedRetrieval).toEqual({ num: 1, den: 3 });
+  });
+
+  it("CLI 로 부른 qmd query 도 센다", () => {
+    const m = computeSessionMetrics("s", [
+      bash(
+        `INDEX_PATH=.agent/qmd/index.sqlite qmd query --collection codebase "결제"`,
+      ),
+    ]);
+    expect(m.axes.indexedRetrieval).toEqual({ num: 0, den: 1 });
+  });
+
+  it("CLI 조회·진단 계열은 분모 크레딧을 주지 않는다", () => {
+    // qmd status·bench 와 graphify stats 를 반복 호출해 점수를 올리는 경로를 닫는다.
+    const m = computeSessionMetrics("s", [
+      bash(`INDEX_PATH=.agent/qmd/index.sqlite qmd status`),
+      bash(`INDEX_PATH=.agent/qmd/index.sqlite qmd bench`),
+      bash(`cd .agent && graphify stats`),
+      bash(`python3 .agent/script/gquery.py god`),
+    ]);
+    expect(m.axes.indexedRetrieval).toEqual({ num: 0, den: 0 });
+  });
+
+  it("한 명령이 인덱스 검색과 전수 스캔을 겸하면 둘 다 센다", () => {
+    const m = computeSessionMetrics("s", [
+      bash(`cd .agent && graphify explain "Foo" && grep -rn Foo app/`),
+    ]);
+    expect(m.axes.indexedRetrieval).toEqual({ num: 1, den: 2 });
+  });
+
   it("조회 계열은 검색이 아니라 분모 크레딧을 주지 않는다", () => {
     // qmd get 을 반복 호출해 점수를 올리는 경로를 닫는다.
     const m = computeSessionMetrics("s", [

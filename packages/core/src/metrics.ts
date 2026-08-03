@@ -289,6 +289,11 @@ export function computeSessionMetrics(
       extras.fileFind.den += 1;
     }
 
+    // CLI 로 부른 인덱스 검색. MCP 도구 이름만 세면 graphify 호출의 99%가 빠진다.
+    if (kind.isIndexedSearch) {
+      axes.indexedRetrieval.den += 1;
+    }
+
     if (kind.isContentSearch) {
       axes.indexedRetrieval.den += 1;
       axes.indexedRetrieval.num += 1;

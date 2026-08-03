@@ -301,6 +301,36 @@ function isRecursiveSearchSegment(tokens: string[]): boolean {
   return searchKindOfSegment(tokens) !== null;
 }
 
+/**
+ * CLI 로 부른 인덱스 검색.
+ *
+ * 인덱스 검색을 MCP 도구 이름으로만 세면 채널이 통째로 빠진다. 이 환경은 graphify 를
+ * CLI 로 쓰는 것이 기본이고(고정 main 그래프를 serve 하는 MCP 는 worktree 와 어긋난다),
+ * 실측에서 graphify 호출의 99%가 Bash 였다. qmd 는 반대로 MCP 가 주채널이고 CLI 가 8%다.
+ * 둘을 다 세지 않으면 `내용 인덱스 우선` 이 41점으로 나오는데, CLI 를 넣으면 58점이다.
+ *
+ * 서브명령을 검색 계열로 한정하는 것은 MCP 쪽과 같은 규율이다. 조회·진단
+ * (`qmd status`·`bench`·`get`, `graphify stats`·`god`·`community`)은 검색이 아니라
+ * 분모 크레딧을 주지 않는다. 주면 그것만 반복 호출해 점수를 올리는 경로가 열린다.
+ */
+const INDEX_CLI_SEARCH: ReadonlyArray<readonly [string, RegExp]> = [
+  ["qmd", /^(query|search|vsearch)$/],
+  ["graphify", /^(query|explain|path|affected)$/],
+];
+
+function isIndexSearchSegment(tokens: string[]): boolean {
+  let i = 0;
+  if (tokens[0] === "npx" || tokens[0] === "xargs") i = 1;
+  const head = tokens[i];
+  if (head === undefined) return false;
+  const bare = head.split("/").pop() ?? head;
+  const sub = tokens[i + 1];
+  if (sub === undefined) return false;
+  return INDEX_CLI_SEARCH.some(
+    ([binary, subcommands]) => bare === binary && subcommands.test(sub),
+  );
+}
+
 interface SourceReadMatch {
   matched: boolean;
   target: string | null;
@@ -458,6 +488,8 @@ export interface BashClassification {
   isFileFind: boolean;
   /** `grep -r`·`rg` 류. 옳은 대안은 qmd·graphify 다. */
   isContentSearch: boolean;
+  /** `qmd query`·`graphify explain` 류 CLI 인덱스 검색. */
+  isIndexedSearch: boolean;
   isSourceRead: boolean;
   fileWriteRule: string | null;
   /** 쓰기 대상 경로. 축3의 코드 편집 판정에 쓴다. 추출 실패면 null. */
@@ -472,6 +504,7 @@ const EMPTY: BashClassification = {
   isRecursiveSearch: false,
   isFileFind: false,
   isContentSearch: false,
+  isIndexedSearch: false,
   isSourceRead: false,
   fileWriteRule: null,
   fileWriteTarget: null,
@@ -496,6 +529,7 @@ export function classifyBash(
   let isFormatter = false;
   let isFileFind = false;
   let isContentSearch = false;
+  let isIndexedSearch = false;
   let isSourceRead = false;
   let fileWriteRule: string | null = null;
   let fileWriteTarget: string | null = null;
@@ -515,6 +549,7 @@ export function classifyBash(
     const searchKind = searchKindOfSegment(tokens);
     if (searchKind === "file") isFileFind = true;
     if (searchKind === "content") isContentSearch = true;
+    if (isIndexSearchSegment(tokens)) isIndexedSearch = true;
 
     const write = fileWriteOf(segment, tokens, scriptWritesFile);
     if (write !== null && !isScratchTarget(write.target)) {
@@ -539,6 +574,7 @@ export function classifyBash(
     isRecursiveSearch: isFileFind || isContentSearch,
     isFileFind,
     isContentSearch,
+    isIndexedSearch,
     isSourceRead,
     fileWriteRule,
     fileWriteTarget,
