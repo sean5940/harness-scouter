@@ -84,6 +84,15 @@ function detectExecMode(entrypoint: string | null): ExecMode {
  * 해석을 넣지 않는다. 축 점수는 여기서 만들지 않고 지표 계산기가 만든다.
  * 정의가 바뀔 때 전체를 재파싱하지 않으려면 이 단계가 중립이어야 한다.
  */
+/**
+ * `git commit` 출력의 해시. `[feature/x 9b116b7] 제목` 형태다.
+ *
+ * 호출 시점에는 해시를 알 수 없어 산출물 ref 를 내부 키로 두었는데, 그러면 git 과
+ * 못 잇는다. 결과에서 뽑아 따로 남긴다. stdout 을 꼬리만 저장하므로 긴 출력에서는
+ * 놓친다. 실측 커밋 호출 502건 중 stdout 이 있는 것이 428건, 해시가 잡히는 것이 122건이다.
+ */
+const COMMIT_SHA = /\[[^\]\n]*\s([0-9a-f]{7,40})\]/;
+
 export function extractFacts(
   entries: RawEntry[],
   projectDir: string,
@@ -275,7 +284,22 @@ export function extractFacts(
       );
       toolResults.push(result);
       const tail = extractStdoutTail(entry.toolUseResult);
-      if (tail !== null) stdoutTails.set(id, tail);
+      if (tail !== null) {
+        stdoutTails.set(id, tail);
+        // 커밋 해시는 도구 결과에만 있다. 호출 시점의 산출물 ref 는 중복제거용
+        // 내부 키라서 git 과 잇지 못한다. 타당성 검증을 사람 라벨이 아니라 결과로
+        // 하려면 실제 해시가 필요하다.
+        const sha = COMMIT_SHA.exec(tail)?.[1];
+        if (sha !== undefined) {
+          artifacts.push({
+            sessionId,
+            sourceFile,
+            kind: "commit-sha",
+            ref: sha,
+            ts,
+          });
+        }
+      }
       resultStatus.set(id, {
         isError: block.is_error === true ? 1 : 0,
         denialKind,

@@ -132,7 +132,11 @@ export interface SessionEventRow {
 export interface ArtifactRow {
   sessionId: string;
   sourceFile: string;
-  kind: "pr" | "commit";
+  /**
+   * `commit` 은 호출 시점의 내부 키라 git 과 못 잇는다. `commit-sha` 는 결과에서 뽑은
+   * 실제 해시로, 타당성 검증을 사람 라벨이 아니라 결과로 하려면 이쪽이 필요하다.
+   */
+  kind: "pr" | "commit" | "commit-sha";
   ref: string;
   ts: string | null;
 }
