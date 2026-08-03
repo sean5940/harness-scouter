@@ -28,8 +28,7 @@ CREATE TABLE IF NOT EXISTS session (
   cc_version TEXT,
   entrypoint TEXT,
   exec_mode  TEXT NOT NULL,
-  skills_json TEXT NOT NULL,
-  assistant_turns INTEGER NOT NULL DEFAULT 0
+  skills_json TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS tool_call (
@@ -61,6 +60,13 @@ CREATE TABLE IF NOT EXISTS tool_result (
   stdout_tail         TEXT,
   source_file         TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (session_id, uuid)
+);
+
+CREATE TABLE IF NOT EXISTS session_turn (
+  session_id  TEXT NOT NULL,
+  source_file TEXT NOT NULL,
+  turns       INTEGER NOT NULL,
+  PRIMARY KEY (session_id, source_file)
 );
 
 CREATE TABLE IF NOT EXISTS session_label (
@@ -167,13 +173,15 @@ export class ScouterDb {
           .prepare("DELETE FROM session_event WHERE source_file = ?")
           .run(path);
         this.db.prepare("DELETE FROM usage WHERE source_file = ?").run(path);
+        this.db
+          .prepare("DELETE FROM session_turn WHERE source_file = ?")
+          .run(path);
       }
 
       const upsertSession = this.db.prepare(`
         INSERT INTO session (session_id, project, git_branch, started_at, ended_at,
-                             model, cc_version, entrypoint, exec_mode, skills_json,
-                             assistant_turns)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             model, cc_version, entrypoint, exec_mode, skills_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(session_id) DO UPDATE SET
           git_branch = COALESCE(excluded.git_branch, session.git_branch),
           started_at = MIN(COALESCE(session.started_at, excluded.started_at), excluded.started_at),
@@ -182,8 +190,7 @@ export class ScouterDb {
           cc_version = COALESCE(excluded.cc_version, session.cc_version),
           entrypoint = COALESCE(excluded.entrypoint, session.entrypoint),
           exec_mode  = excluded.exec_mode,
-          skills_json = excluded.skills_json,
-          assistant_turns = session.assistant_turns + excluded.assistant_turns
+          skills_json = excluded.skills_json
       `);
       for (const s of facts.sessions.values()) {
         upsertSession.run(
@@ -197,8 +204,17 @@ export class ScouterDb {
           s.entrypoint,
           s.execMode,
           s.skillsJson,
-          s.assistantTurns,
         );
+        // 턴은 파일 단위 행으로 둔다. 세션 스칼라에 누적하면 재파싱마다 늘어난다.
+        // 증분 파싱은 새로 읽은 줄만 더하고, 전체 재파싱은 위에서 이 파일 행을 지운 뒤 다시 넣는다.
+        // 덮어쓰기로 두면 증분 회차마다 앞서 읽은 줄의 턴이 사라진다.
+        this.db
+          .prepare(
+            `INSERT INTO session_turn (session_id, source_file, turns) VALUES (?, ?, ?)
+             ON CONFLICT(session_id, source_file) DO UPDATE SET
+               turns = session_turn.turns + excluded.turns`,
+          )
+          .run(s.sessionId, path, s.assistantTurns);
       }
 
       const insertCall = this.db.prepare(`
@@ -263,7 +279,12 @@ export class ScouterDb {
       const insertUsage = this.db.prepare(
         `INSERT OR IGNORE INTO usage
            (session_id, request_id, input, output, cache_read, cache_creation, ts, source_file)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(session_id, request_id) DO UPDATE SET
+           output = MAX(usage.output, excluded.output),
+           input = MAX(usage.input, excluded.input),
+           cache_read = MAX(usage.cache_read, excluded.cache_read),
+           cache_creation = MAX(usage.cache_creation, excluded.cache_creation)`,
       );
       for (const u of facts.usages) {
         insertUsage.run(
@@ -301,7 +322,10 @@ export class ScouterDb {
     return this.db
       .prepare(
         `SELECT session_id, project, git_branch, started_at, ended_at, exec_mode, skills_json
-         , assistant_turns
+         , COALESCE(
+             (SELECT SUM(turns) FROM session_turn t WHERE t.session_id = session.session_id),
+             0
+           ) AS assistant_turns
          FROM session WHERE started_at IS NOT NULL ORDER BY started_at`,
       )
       .all() as unknown as SessionMeta[];
@@ -418,6 +442,7 @@ export class ScouterDb {
       "tool_result",
       "artifact",
       "session_event",
+      "session_turn",
       "usage",
       "file_cursor",
     ];

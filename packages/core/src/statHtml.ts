@@ -64,7 +64,7 @@ color:var(--hs-text-dim);font-size:11.5px;line-height:1.7}
 .adv li.no{color:var(--hs-rank-d)}
 `;
 
-function renderStat(stat: StatEntry): string {
+function renderStat(stat: StatEntry, gray: boolean): string {
   const score = stat.score ?? 0;
   const low = stat.typicalLow;
   const high = stat.typicalHigh;
@@ -101,7 +101,7 @@ function renderStat(stat: StatEntry): string {
     Math.min(100, score)
   ).toFixed(1)}%"></span>${bestTick}</div>
     <div class="score">${num(stat.score)}</div>
-    <div class="rank" style="color:${rankFill(stat.rank)}">${stat.rank}</div>
+    <div class="rank" style="color:${gray ? "var(--hs-muted)" : rankFill(stat.rank)}">${stat.rank}</div>
   </div>
   <div class="parts">${parts}</div>
 </div>`;
@@ -150,8 +150,8 @@ export function renderStatHtml(
     gray ? ' · <span class="warn">커버리지 미달로 판정 보류</span>' : ""
   }</div>
 <div class="chart">${renderRadarSvg(window.stats, { grayedOut: gray })}</div>
-${window.stats.map(renderStat).join("\n")}
-<div class="guide">
+${window.stats.map((stat) => renderStat(stat, gray)).join("\n")}
+${gray ? "" : `<div class="guide">
   <h2>성장 가이드 · 개인 최고까지의 격차 순</h2>
   ${adviseAll(window.stats)
     .filter((a) => (a.gapToBest ?? 0) >= 1)
@@ -178,7 +178,8 @@ ${window.stats.map(renderStat).join("\n")}
     </div>`;
     })
     .join("")}
-</div>
+</div>`}
+${gray ? '<div class="guide"><h2>성장 가이드</h2><div class="adv">계측 커버리지가 임계 아래라 이 구간의 값을 판정하지 않습니다. 커버리지가 회복된 구간에서 다시 보세요.</div></div>' : ""}
 <div class="foot">
 굵은 육각형은 100점 경계, 파선은 개인 최고, 채운 면은 지금입니다.
 막대 안 옅은 띠는 통상 범위(p25~p75), 세로 눈금은 개인 최고입니다.<br>

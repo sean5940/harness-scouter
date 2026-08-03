@@ -109,9 +109,11 @@ export function computeSessionMetrics(
     assistantTurns: 0,
     codeEdits: 0,
   };
-  // 체크포인트 이후 재작업 판정용. 파일별로 마지막 편집이 체크포인트 앞인지 뒤인지 본다.
+  // 체크포인트 이후 재작업 판정용. 에이전트별로 둔다.
+  // 세션 전역으로 두면 다른 worktree 에서 도는 subagent 의 검증이 메인이 편집 중이던
+  // 파일의 체크포인트가 되어 재작업이 과대계상된다.
   const editedBefore = new Map<string, number>();
-  let lastCheckpoint = -1;
+  const lastCheckpoint = new Map<string, number>();
   const seenSearches = new Set<string>();
 
   const hasSidechainRecords = calls.some((c) => c.is_sidechain === 1);
@@ -189,11 +191,13 @@ export function computeSessionMetrics(
         // 같은 파일을 체크포인트 넘어서 다시 고쳤으면 재작업이다. 같은 패스 안의
         // 여러 hunk 편집은 정상이라 체크포인트를 기준으로 가른다.
         extras.rework.den += 1;
-        const previousEdit = editedBefore.get(path);
-        if (previousEdit !== undefined && lastCheckpoint > previousEdit) {
+        const reworkKey = `${agentKey} ${path}`;
+        const previousEdit = editedBefore.get(reworkKey);
+        const checkpoint = lastCheckpoint.get(agentKey) ?? -1;
+        if (previousEdit !== undefined && checkpoint > previousEdit) {
           extras.rework.num += 1;
         }
-        editedBefore.set(path, order);
+        editedBefore.set(reworkKey, order);
         reads.lastEdit.set(path, order);
         if (isCodeFile(path)) {
           extras.codeEdits += 1;
@@ -270,7 +274,7 @@ export function computeSessionMetrics(
       }
       blockKinds.set(agentKey, seen);
       if (call.stdout_tail === null) verifierOutcomeUnknown += 1;
-      lastCheckpoint = order;
+      lastCheckpoint.set(agentKey, order);
     }
 
     if (kind.isCommit && !kind.isCommitAmend) {
@@ -283,7 +287,7 @@ export function computeSessionMetrics(
       segment.lastCodeEdit = -1;
       segment.lastVerifier = -1;
       segment.hasCodeEdit = false;
-      lastCheckpoint = order;
+      lastCheckpoint.set(agentKey, order);
     }
   }
 

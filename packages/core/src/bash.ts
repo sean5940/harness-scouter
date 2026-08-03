@@ -140,12 +140,46 @@ function stripHeredocBodies(command: string): string {
 const SCRIPT_WRITES_FILE =
   /open\s*\([^)]*['"][wa]\+?['"]|\.write\s*\(|writeFileSync|appendFileSync|to_csv|to_json|json\.dump\s*\(|shutil\.(copy|move)|os\.rename|\.write_text/;
 
-/** 파이프·연결·개행으로 명령을 실행 단위로 쪼갠다. */
+/**
+ * 파이프·연결·개행으로 명령을 실행 단위로 쪼갠다.
+ *
+ * 따옴표 안의 구분자는 자르지 않는다. `grep -rn 'alpha|beta'` 를 정규식으로 자르면
+ * 패턴이 두 조각으로 갈려 서로 다른 검색이 같은 것으로 뭉치고, 뒤 조각이 엉뚱한
+ * 명령으로 오분류된다.
+ */
 function splitSegments(command: string): string[] {
-  return command
-    .split(/(?:\|\||&&|[|;\n])+/)
-    .map((s) => s.trim())
-    .filter((s) => s !== "");
+  const out: string[] = [];
+  let current = "";
+  let quote: string | null = null;
+
+  for (let i = 0; i < command.length; i += 1) {
+    const ch = command[i] as string;
+
+    if (quote !== null) {
+      current += ch;
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === "\\" && i + 1 < command.length) {
+      current += ch + command[i + 1];
+      i += 1;
+      continue;
+    }
+    if (ch === "|" || ch === ";" || ch === "&" || ch === "\n") {
+      out.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  out.push(current);
+
+  return out.map((seg) => seg.trim()).filter((seg) => seg !== "");
 }
 
 /** 환경변수 대입과 래퍼를 걷어낸 실행 토큰들. */
@@ -527,28 +561,67 @@ export function offendingSegments(commandRaw: string | null | undefined): {
 /**
  * 검색 명령에서 찾으려는 대상만 뽑는다.
  *
- * 명령 전체를 비교하면 같은 것을 찾는 재검색이 거의 잡히지 않는다(실측 7/2364).
- * 에이전트는 검색어는 유지하고 경로·플래그를 바꿔가며 다시 돌리기 때문이다.
- * 대상만 정규화해 비교하면 "한 번에 못 찾았다"가 보인다.
+ * 명령 전체를 비교하면 같은 것을 찾는 재검색이 거의 안 잡힌다(실측 7/2364).
+ * 그렇다고 공백으로 자르면 따옴표 안의 패턴이 잘려 서로 다른 검색이 같은 것으로 뭉친다.
+ * 읽기 전용과 읽기전용 금지가 둘 다 앞 두 글자로 뭉치는 식이다.
+ * 그래서 따옴표 묶음을 보존해서 패턴 전체를 키로 쓴다.
+ *
+ * find 의 glob 은 단독으로 쓰면 확장자 하나로 전부 뭉치므로 탐색 루트와 짝지어 키를 만든다.
  */
-export function searchTermOf(commandRaw: string | null | undefined): string | null {
+export function searchTermOf(
+  commandRaw: string | null | undefined,
+): string | null {
   if (commandRaw === null || commandRaw === undefined) return null;
   for (const segment of splitSegments(stripHeredocBodies(commandRaw))) {
     const tokens = meaningfulTokens(segment);
     if (!isRecursiveSearchSegment(tokens)) continue;
 
     const head = tokens[0]?.split("/").pop() ?? "";
+    const args = quotedTokens(segment).slice(1);
+
     if (head === "find") {
-      const nameIndex = tokens.findIndex((t) => /^-i?(name|regex)$/.test(t));
-      const pattern = nameIndex >= 0 ? tokens[nameIndex + 1] : undefined;
-      if (pattern !== undefined) return pattern.replace(/['"]/g, "").toLowerCase();
-      continue;
+      const root = args.find((t) => !t.startsWith("-")) ?? ".";
+      const nameIndex = args.findIndex((t) => /^-i?(name|regex)$/.test(t));
+      const pattern = nameIndex >= 0 ? args[nameIndex + 1] : undefined;
+      if (pattern === undefined) continue;
+      return `find:${root}:${unquote(pattern).toLowerCase()}`;
     }
-    // grep·rg는 첫 비옵션 인자가 패턴이다.
-    const pattern = tokens
-      .slice(1)
-      .find((t) => !t.startsWith("-") && !/^[.~/]/.test(t));
-    if (pattern !== undefined) return pattern.replace(/['"]/g, "").toLowerCase();
+
+    for (let i = 0; i < args.length; i += 1) {
+      const arg = args[i];
+      if (arg === undefined) continue;
+      if (GREP_VALUE_OPTIONS.has(arg)) {
+        i += 1;
+        continue;
+      }
+      if (arg.startsWith("-")) continue;
+      return `grep:${unquote(arg).toLowerCase()}`;
+    }
   }
   return null;
+}
+
+/** 값을 받는 검색 옵션. 다음 토큰을 패턴으로 오인하지 않기 위해 건너뛴다. */
+const GREP_VALUE_OPTIONS = new Set([
+  "-e", "--regexp", "-f", "--file", "-m", "--max-count",
+  "-A", "-B", "-C", "--include", "--exclude", "--exclude-dir",
+  "-g", "--glob", "-t", "--type",
+]);
+
+function unquote(token: string): string {
+  return token.replace(/^['"]|['"]$/g, "");
+}
+
+/**
+ * 따옴표 묶음을 하나의 토큰으로 유지하며 자른다.
+ * 공백으로만 자르면 여러 단어 패턴이 쪼개져 서로 다른 검색이 같은 키가 된다.
+ */
+function quotedTokens(segment: string): string[] {
+  const out: string[] = [];
+  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(segment)) !== null) {
+    out.push(match[1] ?? match[2] ?? match[3] ?? "");
+  }
+  return out;
 }

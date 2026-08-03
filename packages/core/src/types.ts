@@ -119,6 +119,7 @@ export interface SessionEventRow {
     | "interrupt"
     | "queue_enqueue"
     | "queue_enqueue_midflight"
+    | "queue_removed"
     | "queue_remove";
   ts: string | null;
 }

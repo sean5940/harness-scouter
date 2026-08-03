@@ -170,7 +170,7 @@ export const COMPONENT_CRITERIA: Record<string, ComponentCriterion> = {
   },
   "응답 간결성": {
     measures:
-      "도구 호출 한 번당 생성한 출력 토큰. 500토큰이 만점, 4,000토큰이 0점이다.",
+      "읽기·편집 호출 한 번당 생성한 출력 토큰. 500토큰이 만점, 4,000토큰이 0점이다. 분모는 Read·Edit·Write 계열만 세고 Bash·검색은 빠진다.",
     whyItMatters:
       "같은 일을 하면서 길게 생성하면 비용과 지연이 함께 늘고, 읽는 사람의 부담도 커진다.",
     actions: [
@@ -185,7 +185,7 @@ export const COMPONENT_CRITERIA: Record<string, ComponentCriterion> = {
     measures:
       "요청 한 번마다 실려 가는 캐시 컨텍스트 크기. 100K가 만점, 400K가 0점이다.",
     whyItMatters:
-      "컨텍스트는 매 턴 다시 실려 간다. 전수 기준 캐시 읽기가 생성 토큰의 217배라, 여기가 비용의 대부분이다.",
+      "컨텍스트는 매 턴 다시 실려 간다. 캐시 읽기가 생성 토큰의 100배를 넘는 규모라 여기가 비용의 대부분이다.",
     actions: [
       "탐색 결과 원문을 main에 쌓지 말고 subagent에 위임해 결론만 받는다.",
       "긴 세션을 작업 단위로 끊는다. 한 세션이 길어질수록 매 턴 나르는 무게가 커진다.",
@@ -235,7 +235,9 @@ export function adviseStat(stat: StatEntry): GrowthAdvice {
         : Math.max(0, stat.best - stat.score),
     bottleneck,
     criterion:
-      bottleneck === null ? null : COMPONENT_CRITERIA[bottleneck.label] ?? null,
+      bottleneck === null
+        ? null
+        : (COMPONENT_CRITERIA[bottleneck.label] ?? null),
   };
 }
 

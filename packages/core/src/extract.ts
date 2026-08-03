@@ -33,15 +33,21 @@ interface ToolUseBlock {
   is_error?: boolean;
 }
 
-const INTERRUPT_MARKER = "Request interrupted by user";
+/**
+ * 중단 표식은 정확히 일치해야 한다.
+ *
+ * 부분 문자열로 보면 이 마커를 인용한 작업 지시문까지 중단으로 잡힌다.
+ * 실측에서 진짜 중단 168건은 전부 이 두 형태와 정확히 일치했고, 부분 일치로 잡힌
+ * 19건은 전부 마커를 본문에 인용한 사용자 메시지였다.
+ */
+const INTERRUPT_EXACT = /^\[Request interrupted by user( for tool use)?\]$/;
 
 function hasInterruptMarker(content: unknown): boolean {
-  if (typeof content === "string") return content.includes(INTERRUPT_MARKER);
   if (!Array.isArray(content)) return false;
   return content.some((block) => {
     if (block === null || typeof block !== "object") return false;
     const text = (block as { text?: unknown }).text;
-    return typeof text === "string" && text.includes(INTERRUPT_MARKER);
+    return typeof text === "string" && INTERRUPT_EXACT.test(text.trim());
   });
 }
 
@@ -90,12 +96,15 @@ export function extractFacts(
   const toolResults: ToolResultRow[] = [];
   const artifacts: ArtifactRow[] = [];
   const sessionEvents: SessionEventRow[] = [];
-  const usages: UsageRow[] = [];
-  const seenRequests = new Set<string>();
+  // 한 응답이 여러 줄로 오는데 output_tokens가 스트리밍이라 줄마다 커진다.
+  // 첫 줄을 채택하면 생성 토큰이 통째로 과소집계된다(실측 -28.3%).
+  const usageByRequest = new Map<string, UsageRow>();
   const stdoutTails = new Map<string, string>();
   const turnsBySession = new Map<string, number>();
   // 큐 개입이 주행 중인지 판정하려면 직전 assistant 응답이 도구 호출로 끝났는지 알아야 한다.
   const lastStopReason = new Map<string, string | null>();
+  // enqueue가 실제로 전달됐는지는 뒤에 오는 dequeue·remove가 정한다.
+  const pendingEnqueues = new Map<string, SessionEventRow[]>();
   // tool_result가 tool_use보다 뒤에 오므로 짝을 맞출 때까지 상태를 들고 있는다.
   const resultStatus = new Map<
     string,
@@ -146,17 +155,27 @@ export function extractFacts(
 
     if (entry.type === "queue-operation") {
       const op = entry.operation;
+      const pending = pendingEnqueues.get(sessionId) ?? [];
       if (op === "enqueue") {
-        // 도구 호출 중에 사람이 자판을 친 것. 도구 체인을 끊지 않으므로 interrupt에 안 잡힌다.
+        // 도구 호출 중에 자판을 친 것. 도구 체인을 끊지 않으므로 interrupt에 안 잡힌다.
         const midflight = lastStopReason.get(sessionId) === "tool_use";
-        sessionEvents.push({
+        const row: SessionEventRow = {
           sessionId,
           sourceFile,
           kind: midflight ? "queue_enqueue_midflight" : "queue_enqueue",
           ts,
-        });
+        };
+        sessionEvents.push(row);
+        pending.push(row);
+        pendingEnqueues.set(sessionId, pending);
       } else if (op === "remove") {
+        // 큐에서 지운 입력은 모델에 전달되지 않는다. 개입으로 세면 안 된다.
+        // 실측에서 remove로 끝난 enqueue 358건 중 전달된 것은 0건이었다.
+        const cancelled = pending.pop();
+        if (cancelled !== undefined) cancelled.kind = "queue_removed";
         sessionEvents.push({ sessionId, sourceFile, kind: "queue_remove", ts });
+      } else if (op === "dequeue") {
+        pending.shift();
       }
       continue;
     }
@@ -172,25 +191,30 @@ export function extractFacts(
     }
 
     if (entry.type === "assistant") {
-      turnsBySession.set(sessionId, (turnsBySession.get(sessionId) ?? 0) + 1);
+      // subagent 턴은 개입 대상이 아니다. 분모에 넣으면 위임할수록 자율성이 오른다.
+      if (entry.isSidechain !== true) {
+        turnsBySession.set(sessionId, (turnsBySession.get(sessionId) ?? 0) + 1);
+      }
       lastStopReason.set(sessionId, entry.message?.stop_reason ?? null);
 
       const usage = entry.message?.usage;
       const requestId = entry.requestId;
       if (usage !== undefined && requestId !== undefined) {
         const key = `${sessionId}:${requestId}`;
-        if (!seenRequests.has(key)) {
-          seenRequests.add(key);
-          usages.push({
-            sessionId,
-            sourceFile,
-            requestId,
-            input: usage.input_tokens ?? 0,
-            output: usage.output_tokens ?? 0,
-            cacheRead: usage.cache_read_input_tokens ?? 0,
-            cacheCreation: usage.cache_creation_input_tokens ?? 0,
-            ts,
-          });
+        const previous = usageByRequest.get(key);
+        const row: UsageRow = {
+          sessionId,
+          sourceFile,
+          requestId,
+          input: usage.input_tokens ?? 0,
+          output: usage.output_tokens ?? 0,
+          cacheRead: usage.cache_read_input_tokens ?? 0,
+          cacheCreation: usage.cache_creation_input_tokens ?? 0,
+          ts,
+        };
+        // input·cache는 줄마다 같지만 output만 누적된다. 최대값을 남긴다.
+        if (previous === undefined || row.output >= previous.output) {
+          usageByRequest.set(key, row);
         }
       }
       for (const block of asBlocks(entry.message?.content)) {
@@ -282,7 +306,7 @@ export function extractFacts(
     toolResults,
     artifacts,
     sessionEvents,
-    usages,
+    usages: [...usageByRequest.values()],
     stdoutTails,
   };
 }

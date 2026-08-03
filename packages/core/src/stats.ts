@@ -74,11 +74,24 @@ export const STAT_QUESTIONS: Record<StatKey, string> = {
 /**
  * 자율성 상한.
  *
- * assistant 턴 100회당 개입 6건을 바닥(0점)으로 본다. 표본에서 주행 중 큐 개입이
- * 세션당 p90 2.74건이었으므로 6건은 넉넉한 상한이다. 상한이 필요한 이유는 개입 빈도가
+ * assistant 턴 100회당 개입 6건을 바닥(0점)으로 본다. 상한이 필요한 이유는 개입 빈도가
  * 비율이 아니라 발생률이라 1로 정규화할 자연스러운 분모가 없기 때문이다.
+ * 구간 수준에서는 상한에 닿는 구간이 없고 세션 수준에서 2% 남짓 닿는다. 이 상한은
+ * 이상치 절단이 아니라 순수한 스케일 선택이므로, 바꾸면 절대 점수와 Lv 가 함께 움직인다.
  */
 const AUTONOMY_CAP_PER_100_TURNS = 6;
+
+/**
+ * 완수력의 산출물 도달에 필요한 최소 세션 수.
+ *
+ * 구간당 분모가 2~11이라 세션 하나가 커밋 없이 끝나면 스탯이 최대 25p 흔들린다.
+ * 같은 스탯의 다른 구성요소(재작업)는 편집 호출 단위라 분모가 34배 크다.
+ * 분모가 얇으면 값을 내지 않는다. meanOf가 null을 빼므로 재작업 단독으로 계산된다.
+ */
+const MIN_DELIVERY_SESSIONS = 8;
+
+/** 이력이 이만큼은 쌓여야 백분위·통상범위·최고를 낸다. */
+const MIN_HISTORY_WINDOWS = 4;
 
 /**
  * 발생률을 0~1 점수로 옮긴다.
@@ -93,15 +106,19 @@ function rateScore(value: number, best: number, worst: number): number {
 }
 
 /**
- * 토큰 기준점. 구간 29개 실측 분포에서 잡았다.
+ * 토큰 기준점.
+ *
+ * 이 값은 임계가 아니라 **눈금 선택**이다. 관측 분포를 여유 있게 감싸도록 잡았고
+ * (읽기·편집 호출당 출력 1,418~4,139 → 1,000~4,500), 코퍼스 성격이 크게 바뀌면
+ * 다시 봐야 한다. 앵커를 바꾸면 절대 점수와 병목 순서가 함께 움직인다는 점을 알고 써야 한다.
  *
  * 재사용률(cache_read 비중)은 쓰지 않는다. 전수 0.967에 스프레드 0.038로 포화라
  * 백분위를 내도 잡음만 남는다. 같은 이유로 초기 설계의 cache_read 축도 폐기됐다.
  * 편집당 토큰도 뺐다. 22배로 가장 잘 퍼지지만 코드를 안 고치는 planning 세션이
  * 통째로 불리해져 작업 종류가 점수를 지배한다.
  */
-const OUTPUT_PER_TOOL_CALL_BEST = 500;
-const OUTPUT_PER_TOOL_CALL_WORST = 4000;
+const OUTPUT_PER_TOOL_CALL_BEST = 1000;
+const OUTPUT_PER_TOOL_CALL_WORST = 4500;
 const CONTEXT_PER_REQUEST_BEST = 100_000;
 const CONTEXT_PER_REQUEST_WORST = 400_000;
 
@@ -160,7 +177,7 @@ export function computeStats(period: Period): StatValue[] {
       ),
       component(
         "응답 간결성",
-        outputPerToolCall(period),
+        outputPerReadWriteCall(period),
         a.instrumentedChannel.den + a.readRevisit.den,
       ),
       component(
@@ -185,7 +202,13 @@ export function computeStats(period: Period): StatValue[] {
       component("사람 개입 없음", autonomyScore(period), e.assistantTurns),
     ],
     delivery: [
-      component("산출물 도달", ratio(period.delivery), period.delivery.den),
+      component(
+        "산출물 도달",
+        period.delivery.den < MIN_DELIVERY_SESSIONS
+          ? null
+          : ratio(period.delivery),
+        period.delivery.den,
+      ),
       component("재작업 없음", inverse(ratio(e.rework)), e.rework.den),
     ],
     discipline: [
@@ -232,8 +255,14 @@ function autonomyScore(period: Period): number | null {
   return Math.max(0, 1 - per100 / AUTONOMY_CAP_PER_100_TURNS);
 }
 
-/** 도구 호출 한 번을 내기 위해 얼마나 길게 생성했는가. 짧을수록 좋다. */
-function outputPerToolCall(period: Period): number | null {
+/**
+ * 읽기·편집 호출 한 번을 내기 위해 얼마나 길게 생성했는가. 짧을수록 좋다.
+ *
+ * 분모가 전체 도구 호출이 아니라 Read·Edit·Write 계열뿐이다(전체의 38% 수준).
+ * Bash·검색·MCP 를 넣으려면 앵커를 다시 적합해야 하므로 지금은 이름과 설명을
+ * 분모에 맞춰 두고, 화면에도 그대로 적는다.
+ */
+function outputPerReadWriteCall(period: Period): number | null {
   const calls =
     period.axes.instrumentedChannel.den + period.axes.readRevisit.den;
   if (calls === 0 || period.usage.output === 0) return null;
@@ -340,15 +369,21 @@ export function buildStatWindow(
   history: Period[],
   options: StatWindowOptions = {},
 ): StatWindow {
-  const closed = history.filter((p) => !p.open);
+  // 현재 창을 자기 이력 분포에서 뺀다. 넣으면 percentileOf 의 엄격 비교 때문에
+  // 자기 자신이 분모만 늘려 백분위가 단방향으로 부풀고, best 도 자기 자신이 되어
+  // 신기록 구간의 성장 여지가 0으로 사라진다.
+  const closed = history.filter((p) => !p.open && p.index !== current.index);
   const currentStats = computeStats(current);
   const historyStats = closed.map((p) => computeStats(p));
+  const hasHistory = closed.length >= MIN_HISTORY_WINDOWS;
 
   const stats: StatEntry[] = currentStats.map((stat, index) => {
-    const series = historyStats
-      .map((s) => s[index]?.score)
-      .filter((v): v is number => v !== undefined && v !== null)
-      .sort((x, y) => x - y);
+    const series = !hasHistory
+      ? []
+      : historyStats
+          .map((s) => s[index]?.score)
+          .filter((v): v is number => v !== undefined && v !== null)
+          .sort((x, y) => x - y);
     const percentile =
       stat.score === null ? null : percentileOf(series, stat.score);
     return {
@@ -374,6 +409,26 @@ export function buildStatWindow(
 
   const coverage = coverageRatio(current.coverage);
 
+  // 종합도 개별 스탯과 같은 기준을 써야 한다. 종합만 절대 임계면 각주가 거짓이 되고,
+  // 종합 범위가 74~84로 눌려 있어 A와 B 두 값밖에 안 나온다.
+  const overallHistory = historyStats
+    .map((set) => {
+      const scored = set
+        .map((x) => x.score)
+        .filter((v): v is number => v !== null);
+      return scored.length === 0
+        ? null
+        : scored.reduce((a, b) => a + b, 0) / scored.length;
+    })
+    .filter((v): v is number => v !== null)
+    .sort((a, b) => a - b);
+  const overallRank =
+    options.rankByAbsoluteScore === true
+      ? rankFromScore(overall)
+      : !hasHistory || overall === null
+        ? "-"
+        : rankFromPercentile(percentileOf(overallHistory, overall));
+
   return {
     periodIndex: current.index,
     startedAt: current.startedAt,
@@ -383,7 +438,7 @@ export function buildStatWindow(
     judgeable: coverage === null || coverage >= COVERAGE_FLOOR,
     stats,
     overall,
-    overallRank: rankFromScore(overall),
+    overallRank,
     level: overall === null ? 0 : Math.max(1, Math.round(overall)),
     historyWindows: closed.length,
   };
