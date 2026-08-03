@@ -10,6 +10,7 @@ export * from "./analyze.js";
 export * from "./radar.js";
 export * from "./diagnose.js";
 export * from "./labels.js";
+export * from "./harness.js";
 export * from "./bash.js";
 export * from "./gate.js";
 export * from "./reportHtml.js";

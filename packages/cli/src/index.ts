@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
+import { homedir } from "node:os";
 
 import {
   analyze,
@@ -15,6 +16,9 @@ import {
   buildStatWindow,
   mergePeriods,
   compareHalves,
+  scanHarness,
+  summarizeHarness,
+  STAGE_LABELS,
   adviseAll,
   renderStatHtml,
   runGate,
@@ -37,6 +41,7 @@ const USAGE = `harness-scouter
   scouter guide [--db <path>] [--all]           능력치별 병목과 올리는 법
   scouter label <세션id> good|bad [--note <s>]   세션에 라벨을 붙인다
   scouter labels [--labels <path>]              붙인 라벨을 본다 (기본 ~/.harness-scouter/labels.jsonl)
+  scouter harness [--root <path>]               하네스 구조(센서·가이드)를 스캔한다
   scouter gate [--db <path>]                    M0.5 재현성 게이트를 돌린다
   scouter json [--db <path>]                    확장이 읽을 JSON을 낸다
   scouter html [--db <path>] [--out <path>] [--all] [--diag]
@@ -367,6 +372,43 @@ async function main(): Promise<void> {
         `\n  M1.5 타당성 게이트는 30건부터 의미가 있습니다. ${30 - rows.length}건 남았습니다.\n`,
       );
     }
+    return;
+  }
+
+  if (command === "harness") {
+    const root = flags.get("root") ?? process.cwd();
+    const extra = [join(homedir(), ".claude", "settings.json")];
+    const inventory = scanHarness(root, extra);
+    const sum = summarizeHarness(inventory);
+    const auto = inventory.sensors.filter((x) => x.kind !== "skill").length;
+    process.stdout.write(`\n  하네스 구조  ${root}\n\n`);
+    process.stdout.write(
+      `  센서 ${sum.sensorCount}개 (자동 ${auto} · 수동 ${sum.sensorCount - auto}) · 가이드 ${sum.guideCount}개\n\n`,
+    );
+    process.stdout.write(
+      `  방향   feedforward ${sum.byDirection.feedforward}  ·  feedback ${sum.byDirection.feedback}\n`,
+    );
+    process.stdout.write(
+      `  실행   computational ${sum.byExecution.computational}  ·  inferential ${sum.byExecution.inferential}\n`,
+    );
+    process.stdout.write(
+      `  단계   ${(Object.keys(sum.byStage) as Array<keyof typeof sum.byStage>)
+        .map((k) => `${STAGE_LABELS[k]} ${sum.byStage[k]}`)
+        .join("  ·  ")}\n`,
+    );
+    if (sum.emptyStages.length > 0) {
+      process.stdout.write(
+        `\n  센서 없는 단계: ${sum.emptyStages.map((k) => STAGE_LABELS[k]).join(", ")}\n`,
+      );
+    }
+    for (const note of inventory.notScanned) {
+      process.stdout.write(`  못 봄: ${note}\n`);
+    }
+    process.stdout.write(
+      "\n  축 이름은 Martin Fowler 의 harness engineering 에서 가져왔습니다.\n" +
+        "  센서 수는 행동 지표의 분모입니다. 차단 0건이 센서가 좋아서인지 없어서인지는\n" +
+        "  이 목록을 봐야 갈립니다.\n",
+    );
     return;
   }
 
