@@ -66,7 +66,8 @@ export const COMPONENT_CRITERIA: Record<string, ComponentCriterion> = {
     ],
     antipatterns: [
       "`grep -r` 을 `Grep` 도구로만 바꾸기. 채널만 바뀌고 하는 일은 내용 전수 스캔 그대로라 점수가 오르지 않는다.",
-      "`qmd get` 처럼 검색이 아닌 호출로 분모를 키우기. 이 경로는 정의에서 닫아 두었다.",
+      "`git grep` 이나 비재귀 글롭 `grep` 으로 스캔을 분류기 밖으로 빼기. 이미 440건이 이렇게 안 세어지고 있다.",
+      "결과를 안 읽는 `qmd query` 를 스캔 앞에 한 번씩 던져 분모만 키우기. `qmd get`·`status` 는 막았지만 `query` 반복은 열려 있다.",
     ],
   },
   "검색 한 번에 찾기": {
@@ -91,6 +92,7 @@ export const COMPONENT_CRITERIA: Record<string, ComponentCriterion> = {
     antipatterns: [
       'CLAUDE.md에 "항상 tsc를 돌려라"를 넣기. 신선도는 오르고 공회전이 같이 튄다.',
       "`tsc && eslint && test`를 훅으로 강제하기. 행동은 그대로인데 점수만 오른다.",
+      "커밋 앞에 `npx tsc --version;` 처럼 결과를 안 보는 verifier 를 접합하기. 신선도 판정은 종류와 순서만 봐서 그대로 통과한다.",
     ],
   },
   "검증 공회전 없음": {
@@ -101,7 +103,11 @@ export const COMPONENT_CRITERIA: Record<string, ComponentCriterion> = {
       "스킬의 검증 스텝을 개별 나열 대신 `tsc && eslint && prettier --check` 단일 명령으로 못박는다.",
       'verifier에 `; echo "EXIT=$?"`를 붙이도록 훅에서 리라이트한다. 조작 방향이 없는 드문 안전한 훅이다. 점수는 stdout 파싱으로 매기므로 exit code 노출이 점수를 올리지 않는다.',
     ],
-    antipatterns: ["검증 횟수 상한을 훅으로 걸기. 수정 후 재검증까지 막힌다."],
+    antipatterns: [
+      "검증 횟수 상한을 훅으로 걸기. 수정 후 재검증까지 막힌다.",
+      "검증 사이에 파일을 한 번 고쳐 같은 종류 판정을 리셋하기. 편집이 판정을 비우는 구조라 실측 689건이 이렇게 지워지고 있다.",
+      "같은 종류를 `&&` 로 한 호출에 묶기. 반복이 1건으로 접혀 공회전이 안 보인다. 서로 다른 종류를 묶는 것은 정상이다.",
+    ],
   },
   "산출물 도달": {
     measures: "코드를 고친 세션 중 커밋이나 PR까지 간 비율.",
@@ -152,7 +158,7 @@ export const COMPONENT_CRITERIA: Record<string, ComponentCriterion> = {
     antipatterns: [
       "예외 목록을 넓혀 점수 올리기. 측정값이 행동이 아니라 목록 편집에 반응하는 순간 축이 죽는다.",
       "명령을 `&&`로 이어붙여 호출 수 줄이기. 검증 신선도와 공회전 판정이 동시에 망가진다.",
-      "`2>/tmp/x.log`를 덧붙여 임시 경로 예외로 빠져나가기.",
+      "`cat` 대신 `awk`·`python3`·`node` 로 같은 파일을 읽기. 이 이름들은 판정 자체가 안 돼 분자와 분모에서 동시에 빠지고, 실측 2,152건이 그 상태다.",
     ],
   },
   "규칙 위반 시도 없음": {
@@ -179,6 +185,7 @@ export const COMPONENT_CRITERIA: Record<string, ComponentCriterion> = {
     ],
     antipatterns: [
       "`limit: 2000`을 훅으로 주입하기. Read 기본 상한과 같아 아무것도 좁히지 않는데 부분읽기로 집계된다.",
+      "`offset: 2`를 훅으로 주입하기. 시작줄이 1이 아니기만 하면 부분읽기로 잡혀서, 파일 전체를 읽어도 만점이 된다.",
       "chunk 순회로 잘게 쪼개기. 읽은 것 기억하기가 대신 떨어진다.",
     ],
   },
@@ -193,6 +200,8 @@ export const COMPONENT_CRITERIA: Record<string, ComponentCriterion> = {
     ],
     antipatterns: [
       "파일을 통째로 읽어 재방문을 없애기. 읽기 범위 규율이 대신 떨어진다.",
+      "재확인 전에 대상 파일을 한 번 고쳐 면제받기. 편집이 실질적인지 볼 근거가 없어 실측 476건이 이미 면제 중이다.",
+      "두 번째 읽기를 subagent 로 넘기기. 에이전트가 다르면 재방문으로 안 세어진다.",
     ],
   },
   "응답 간결성": {
