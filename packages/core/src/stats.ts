@@ -9,6 +9,7 @@ import {
   type CoverageCount,
 } from "./metrics.js";
 import { emptyEvents, emptyUsage, type Period } from "./periods.js";
+import { COMPONENT_CRITERIA } from "./growth.js";
 
 /**
  * 탐색력을 세 구성요소로 나눈 이유.
@@ -356,13 +357,37 @@ function rankFromPercentile(percentile: number | null): Rank {
   return "D";
 }
 
+/**
+ * 절대 컷. 도출 근거가 없는 숫자다.
+ *
+ * 라벨이 0건이라 "몇 점부터 좋은가"를 정할 외부 기준이 없는데도 네 개의 컷이 코드에
+ * 박혀 있다. 그리고 이 컷은 실제로 헤드라인을 정한다. 전수 종합 78.56 이 A 컷 78 보다
+ * 0.56 높아서 A 인데, 컷을 79 로 옮기면 B 가 된다. 그래서 등급 옆에 가장 가까운 컷과의
+ * 거리를 함께 낸다. 읽는 사람이 그 등급이 아슬아슬한지 여유 있는지 보게 하려는 것이고,
+ * 이건 임계를 새로 만들지 않고도 할 수 있다.
+ */
+const ABSOLUTE_CUTS: ReadonlyArray<readonly [number, Rank]> = [
+  [90, "S"],
+  [78, "A"],
+  [62, "B"],
+  [45, "C"],
+];
+
 function rankFromScore(score: number | null): Rank {
   if (score === null) return "-";
-  if (score >= 90) return "S";
-  if (score >= 78) return "A";
-  if (score >= 62) return "B";
-  if (score >= 45) return "C";
+  for (const [cut, rank] of ABSOLUTE_CUTS) if (score >= cut) return rank;
   return "D";
+}
+
+/** 등급을 바꾸는 가장 가까운 컷까지의 거리. 없으면 null. */
+export function marginToCut(score: number | null): number | null {
+  if (score === null) return null;
+  let nearest: number | null = null;
+  for (const [cut] of ABSOLUTE_CUTS) {
+    const distance = Math.abs(score - cut);
+    if (nearest === null || distance < nearest) nearest = distance;
+  }
+  return nearest;
 }
 
 export interface StatWindowOptions {
@@ -409,7 +434,21 @@ export function buildStatWindow(
     };
   });
 
+  // `guarded` 구성요소만으로 된 스탯은 종합에서 뺀다.
+  //
+  // 양극단이 모두 나쁜 값을 "높을수록 좋음"들과 평균 내면 그 평균이 무엇을 뜻하는지
+  // 말할 수 없다. 그리고 종합이 스탯 평균의 평균이라 구성요소가 하나뿐인 스탯의 그
+  // 구성요소가 종합의 16.7%를 갖는다. 지금 자율성이 정확히 그 자리다. 구성요소가
+  // 하나이고 그것이 guarded 라서, 가장 해석하기 어려운 신호에 가장 큰 가중이 붙어 있다.
+  // 값은 계속 보여주되 종합에서만 뺀다.
+  const countsTowardOverall = (s: StatEntry): boolean =>
+    s.score !== null &&
+    s.components.some((c) => {
+      const criterion = COMPONENT_CRITERIA[c.label];
+      return c.value !== null && criterion?.objective !== "guarded";
+    });
   const scored = stats
+    .filter(countsTowardOverall)
     .map((s) => s.score)
     .filter((v): v is number => v !== null);
   const overall =

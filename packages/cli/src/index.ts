@@ -16,6 +16,10 @@ import {
   buildStatWindow,
   mergePeriods,
   compareHalves,
+  marginToCut,
+  COMPONENT_CRITERIA,
+  OBJECTIVE_LABELS,
+  CONTAMINATION_LABELS,
   scanHarness,
   summarizeHarness,
   STAGE_LABELS,
@@ -217,8 +221,13 @@ async function main(): Promise<void> {
       }
     }
     process.stdout.write(`  ${"─".repeat(80)}\n`);
+    const margin = flags.has("all") ? marginToCut(w.overall) : null;
     process.stdout.write(
-      `  종합 ${w.overall === null ? "—" : w.overall.toFixed(1)} · ${w.overallRank}\n` +
+      `  종합 ${w.overall === null ? "—" : w.overall.toFixed(1)} · ${w.overallRank}` +
+        (margin === null
+          ? ""
+          : `  (가장 가까운 등급 컷까지 ${margin.toFixed(1)}p)`) +
+        "\n" +
         (flags.has("all")
           ? "  전수 집계라 등급을 절대 점수로 매겼습니다. 구간별 등급은 --all 없이 보세요.\n"
           : `  등급은 내 이력 ${w.historyWindows}개 창 대비 위치입니다. 절대 기준이 아닙니다.\n`),

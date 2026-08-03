@@ -1,4 +1,9 @@
-import { adviseAll } from "./growth.js";
+import {
+  adviseAll,
+  COMPONENT_CRITERIA,
+  OBJECTIVE_LABELS,
+  CONTAMINATION_LABELS,
+} from "./growth.js";
 import { renderRadarSvg, rankFill } from "./radar.js";
 import type { StatEntry, StatWindow, TrendRow } from "./stats.js";
 
@@ -127,6 +132,23 @@ body{margin:0;padding:32px 20px 64px;background:var(--bg);color:var(--text);
 .trend .flat{color:var(--dim)}
 .trend .crit{font-size:11.5px;color:var(--dim);line-height:1.6;
   padding-left:11px;border-left:2px solid var(--line)}
+.rubric table{width:100%;border-collapse:collapse;font-size:12px;
+  background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.rubric th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
+  font-weight:600;text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}
+.rubric td{padding:7px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+.rubric tr:last-child td{border-bottom:none}
+.rubric .dim{color:var(--dim);white-space:nowrap}
+.rubric .basis{color:var(--dim);font-size:11.5px;line-height:1.55}
+.rubric .obj{font-weight:700;white-space:nowrap}
+.rubric .obj.ceiling{color:var(--now)}
+.rubric .obj.directional{color:var(--fg)}
+.rubric .obj.guarded{color:var(--best)}
+.rubric .flag{display:inline-block;font-size:10.5px;color:var(--d);
+  border:1px solid var(--line);border-radius:3px;padding:1px 5px;margin:0 3px 3px 0;white-space:nowrap}
+.rubric .clean{font-size:10.5px;color:var(--now);font-weight:600}
+.rubric .crit{font-size:11.5px;color:var(--dim);line-height:1.65;
+  padding-left:11px;border-left:2px solid var(--line)}
 
 .foot{color:var(--dim);font-size:11.5px;line-height:1.8;padding-top:16px;
   border-top:1px solid var(--line)}
@@ -189,6 +211,56 @@ function renderStat(stat: StatEntry, gray: boolean): string {
  *
  * Webview에 그대로 넣을 수 있도록 외부 리소스 없이 한 파일로 만든다 (설계 7절 CSP 제약).
  */
+/**
+ * 구성요소마다 무엇을 기준으로 평가하는지.
+ *
+ * 등급을 그 사람의 이력 백분위로만 매기면 다른 사람 하네스를 평가할 수 없다.
+ * 목표가 어디서 오는지(objective)와 무엇이 비교를 깨는지(contamination)를 함께 적어야
+ * 이 점수를 남의 하네스에 대고 쓸 수 있는지 판단할 수 있다.
+ */
+function renderRubric(stats: StatEntry[]): string {
+  const rows = stats.flatMap((stat) =>
+    stat.components.map((c) => ({ stat: stat.label, component: c.label })),
+  );
+  const seen = new Set<string>();
+  const body = rows
+    .map(({ stat, component }) => {
+      if (seen.has(component)) return "";
+      seen.add(component);
+      const criterion = COMPONENT_CRITERIA[component];
+      if (criterion === undefined) return "";
+      const flags =
+        criterion.contamination.length === 0
+          ? '<span class="clean">비교 가능</span>'
+          : criterion.contamination
+              .map(
+                (f) =>
+                  `<span class="flag">${escapeHtml(CONTAMINATION_LABELS[f])}</span>`,
+              )
+              .join("");
+      return `<tr>
+      <td class="dim">${escapeHtml(stat)}</td>
+      <td>${escapeHtml(component)}</td>
+      <td><span class="obj ${criterion.objective}">${escapeHtml(OBJECTIVE_LABELS[criterion.objective])}</span></td>
+      <td>${flags}</td>
+      <td class="basis">${escapeHtml(criterion.targetBasis)}</td>
+    </tr>`;
+    })
+    .join("");
+  if (body === "") return "";
+  return `<div class="guide rubric">
+  <h2>평가 기준 · 이 점수를 남의 하네스에 쓸 수 있는가</h2>
+  <table>
+    <thead><tr><th>능력치</th><th>구성요소</th><th>목표</th><th>비교 가능성</th><th>근거</th></tr></thead>
+    <tbody>${body}</tbody>
+  </table>
+  <div class="crit">오염 표시가 하나라도 있으면 사람 간 비교에 쓰지 않습니다.
+  <b>훅 설치가 값을 움직임</b>은 차단된 호출이 축 계산에서 빠져 방어를 깔수록 점수가 오른다는 뜻이고,
+  <b>도구 이름에 묶임</b>은 이름이 다른 하네스에서 그 활동이 계상에서 통째로 빠진다는 뜻입니다.
+  <b>양극단 주의</b>는 최대화 대상이 아니라 종합 점수에서 뺍니다.</div>
+</div>`;
+}
+
 /** 분모가 이보다 얇으면 차이를 표시하되 판단 근거로는 쓰지 않는다고 밝힌다. */
 const TREND_THIN_DENOMINATOR = 100;
 
@@ -260,6 +332,7 @@ export function renderStatHtml(
 </div>
 <div class="chart">${renderRadarSvg(window.stats, { grayedOut: gray })}</div>
 <div class="stats">${window.stats.map((stat) => renderStat(stat, gray)).join("\n")}</div>
+${renderRubric(window.stats)}
 ${
   gray
     ? ""
