@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS tool_result (
   total_lines         INTEGER,
   num_lines           INTEGER,
   start_line          INTEGER,
+  edit_type           TEXT,
   subagent_tool_calls INTEGER,
   subagent_edit_files INTEGER,
   stdout_tail         TEXT,
@@ -164,7 +165,9 @@ export class ScouterDb {
       if (reparsedFromStart) {
         // 한 세션의 기록이 메인 파일과 subagent 파일 여러 개에 흩어져 있다(평균 3.2개).
         // 세션 단위로 지우면 재파싱하지 않은 파일의 행까지 날아가고 다시 채워지지 않는다.
-        this.db.prepare("DELETE FROM tool_call WHERE source_file = ?").run(path);
+        this.db
+          .prepare("DELETE FROM tool_call WHERE source_file = ?")
+          .run(path);
         this.db
           .prepare("DELETE FROM tool_result WHERE source_file = ?")
           .run(path);
@@ -243,9 +246,9 @@ export class ScouterDb {
 
       const insertResult = this.db.prepare(`
         INSERT OR REPLACE INTO tool_result
-          (session_id, uuid, total_lines, num_lines, start_line,
+          (session_id, uuid, total_lines, num_lines, start_line, edit_type,
            subagent_tool_calls, subagent_edit_files, stdout_tail, source_file)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const r of facts.toolResults) {
         insertResult.run(
@@ -254,6 +257,7 @@ export class ScouterDb {
           r.totalLines,
           r.numLines,
           r.startLine,
+          r.editType,
           r.subagentToolCalls,
           r.subagentEditFiles,
           facts.stdoutTails.get(r.uuid) ?? null,
@@ -336,7 +340,7 @@ export class ScouterDb {
     return this.db
       .prepare(
         `SELECT c.seq, c.name, c.command, c.file_path, c.is_error, c.denial_kind, c.is_sidechain, c.agent_id,
-                r.total_lines, r.num_lines, r.start_line,
+                r.total_lines, r.num_lines, r.start_line, r.edit_type,
                 r.subagent_tool_calls, r.subagent_edit_files, r.stdout_tail
          FROM tool_call c
          LEFT JOIN tool_result r ON r.session_id = c.session_id AND r.uuid = c.uuid
@@ -480,6 +484,7 @@ export interface ToolCallRecord {
   total_lines: number | null;
   num_lines: number | null;
   start_line: number | null;
+  edit_type: string | null;
   subagent_tool_calls: number | null;
   subagent_edit_files: number | null;
   stdout_tail: string | null;

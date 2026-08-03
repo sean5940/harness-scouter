@@ -110,8 +110,8 @@ describe("축3 분모는 코드 편집만 센다", () => {
   });
 });
 
-describe("축5b는 전수 스캔 도구를 분자에 넣는다", () => {
-  it("Grep 도구는 계측 채널이지만 인덱스가 아니다", () => {
+describe("탐색을 파일 찾기와 내용 찾기로 나눈다", () => {
+  it("Grep 은 계측 도구지만 내용 전수 스캔이라 분자다", () => {
     const m = computeSessionMetrics("s", [
       call({ name: "Grep" }),
       call({ name: "mcp__qmd__query" }),
@@ -119,9 +119,81 @@ describe("축5b는 전수 스캔 도구를 분자에 넣는다", () => {
     expect(m.axes.indexedRetrieval).toEqual({ num: 1, den: 2 });
   });
 
-  it("Glob도 같다", () => {
+  it("Glob 은 파일 찾기의 옳은 대안이라 가점 쪽이다", () => {
+    // 초판은 Glob 을 감점으로 뒀고, 그래서 find 를 Glob 으로 바꿔도 점수가 안 올랐다.
     const m = computeSessionMetrics("s", [call({ name: "Glob" })]);
-    expect(m.axes.indexedRetrieval).toEqual({ num: 1, den: 1 });
+    expect(m.extras.fileFind).toEqual({ num: 1, den: 1 });
+    expect(m.axes.indexedRetrieval).toEqual({ num: 0, den: 0 });
+  });
+
+  it("bash find 는 같은 분모에서 Glob 과 비교된다", () => {
+    const m = computeSessionMetrics("s", [
+      bash("find . -name '*.ts'"),
+      call({ name: "Glob" }),
+    ]);
+    expect(m.extras.fileFind).toEqual({ num: 1, den: 2 });
+  });
+
+  it("조회 계열은 검색이 아니라 분모 크레딧을 주지 않는다", () => {
+    // qmd get 을 반복 호출해 점수를 올리는 경로를 닫는다.
+    const m = computeSessionMetrics("s", [
+      call({ name: "mcp__qmd__get" }),
+      call({ name: "mcp__qmd__status" }),
+    ]);
+    expect(m.axes.indexedRetrieval).toEqual({ num: 0, den: 0 });
+  });
+});
+
+describe("근거 확보율", () => {
+  it("기존 파일을 안 읽고 고치면 감점이다", () => {
+    const m = computeSessionMetrics("s", [
+      call({ name: "Edit", file_path: "a.ts" }),
+    ]);
+    expect(m.extras.groundedEdit).toEqual({ num: 0, den: 1 });
+  });
+
+  it("Edit 은 type 필드가 없어도 기존 파일 편집으로 센다", () => {
+    // type 은 Write 결과에만 실린다. 그것만 보면 Edit 4,450건이 분모에서 빠진다.
+    const m = computeSessionMetrics("s", [
+      call({ name: "Edit", file_path: "a.ts", edit_type: null }),
+      call({ name: "MultiEdit", file_path: "b.ts", edit_type: null }),
+    ]);
+    expect(m.extras.groundedEdit.den).toBe(2);
+  });
+
+  it("Write 는 type 이 없으면 판정 불가라 분모에서 뺀다", () => {
+    const m = computeSessionMetrics("s", [
+      call({ name: "Write", file_path: "a.ts", edit_type: null }),
+    ]);
+    expect(m.extras.groundedEdit.den).toBe(0);
+  });
+
+  it("먼저 읽고 고치면 가점이다", () => {
+    const m = computeSessionMetrics("s", [
+      call({
+        name: "Read",
+        file_path: "a.ts",
+        total_lines: 50,
+        num_lines: 50,
+        start_line: 1,
+      }),
+      call({ name: "Edit", file_path: "a.ts" }),
+    ]);
+    expect(m.extras.groundedEdit).toEqual({ num: 1, den: 1 });
+  });
+
+  it("새로 만든 파일은 읽을 것이 없어 분모에서 뺀다", () => {
+    const m = computeSessionMetrics("s", [
+      call({ name: "Write", file_path: "new.ts", edit_type: "create" }),
+    ]);
+    expect(m.extras.groundedEdit).toEqual({ num: 0, den: 0 });
+  });
+
+  it("문서 편집은 분모에 안 넣는다", () => {
+    const m = computeSessionMetrics("s", [
+      call({ name: "Edit", file_path: "notes.md" }),
+    ]);
+    expect(m.extras.groundedEdit.den).toBe(0);
   });
 });
 

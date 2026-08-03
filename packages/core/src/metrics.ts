@@ -5,9 +5,11 @@ import {
   isEffectivePartialRead,
   isCodeFile,
   isNonTextFile,
-  INDEXED_SEARCH_TOOL_PATTERN,
+  isIndexedSearchTool,
+  isExistingFileEdit,
   LARGE_FILE_LINES,
-  SCANNING_SEARCH_TOOLS,
+  CONTENT_SCAN_TOOLS,
+  FILE_FIND_TOOLS,
   type AxisKey,
 } from "./definitions.js";
 
@@ -32,6 +34,10 @@ export interface ExtraCounts {
   searchRepeat: AxisCount;
   /** 훅·권한에 막힌 호출 비율 */
   ruleFriction: AxisCount;
+  /** 파일 찾기를 계측 도구(Glob)로 한 비율. `find -name` 이 분모의 나머지다. */
+  fileFind: AxisCount;
+  /** 기존 파일 편집 중 그 파일을 먼저 읽은 비율. 새로 만든 파일은 분모에서 뺀다. */
+  groundedEdit: AxisCount;
   askQuestions: number;
   assistantTurns: number;
   codeEdits: number;
@@ -102,7 +108,7 @@ interface CommitSegment {
  */
 export function computeSessionMetrics(
   sessionId: string,
-  calls: ToolCallRecord[]
+  calls: ToolCallRecord[],
 ): SessionMetrics {
   const axes = emptyAxes();
   const coverage: CoverageCount = { observable: 0, offChannel: 0, opaque: 0 };
@@ -113,6 +119,8 @@ export function computeSessionMetrics(
     rework: { num: 0, den: 0 },
     searchRepeat: { num: 0, den: 0 },
     ruleFriction: { num: 0, den: 0 },
+    fileFind: { num: 0, den: 0 },
+    groundedEdit: { num: 0, den: 0 },
     askQuestions: 0,
     assistantTurns: 0,
     codeEdits: 0,
@@ -175,7 +183,7 @@ export function computeSessionMetrics(
             isEffectivePartialRead(
               call.total_lines,
               call.num_lines,
-              call.start_line
+              call.start_line,
             )
           ) {
             axes.readScope.num += 1;
@@ -210,6 +218,12 @@ export function computeSessionMetrics(
           extras.rework.num += 1;
         }
         editedBefore.set(reworkKey, order);
+        // 근거 확보율. 새로 만든 파일은 읽을 것이 없으므로 분모에서 뺀다.
+        // 탐색력이 "검색한 것들 중 비율"만 보면 아예 안 찾고 고친 경우를 못 잡는다.
+        if (isExistingFileEdit(name, call.edit_type) && isCodeFile(path)) {
+          extras.groundedEdit.den += 1;
+          if (reads.lastRead.has(path)) extras.groundedEdit.num += 1;
+        }
         reads.lastEdit.set(path, order);
         if (isCodeFile(path)) {
           extras.codeEdits += 1;
@@ -229,14 +243,21 @@ export function computeSessionMetrics(
       continue;
     }
 
-    if (SCANNING_SEARCH_TOOLS.has(name)) {
-      // 계측 채널이지만 하는 일은 전수 스캔이다. 축이 묻는 것은 인덱스를 먼저 봤는가다.
+    if (CONTENT_SCAN_TOOLS.has(name)) {
+      // 계측 채널이지만 하는 일은 내용 전수 스캔이다.
       axes.indexedRetrieval.den += 1;
       axes.indexedRetrieval.num += 1;
       continue;
     }
 
-    if (INDEXED_SEARCH_TOOL_PATTERN.test(name)) {
+    if (FILE_FIND_TOOLS.has(name)) {
+      // 파일 찾기의 옳은 대안. `find -name` 대신 이걸 쓰면 점수가 오른다.
+      extras.fileFind.den += 1;
+      extras.fileFind.num += 1;
+      continue;
+    }
+
+    if (isIndexedSearchTool(name)) {
       axes.indexedRetrieval.den += 1;
       continue;
     }
@@ -263,7 +284,12 @@ export function computeSessionMetrics(
       blockKinds.set(agentKey, new Set());
     }
 
-    if (kind.isRecursiveSearch) {
+    if (kind.isFileFind) {
+      // 파일 찾기는 인덱스로 대체할 수 없다. Glob 과 같은 분모에서 비교한다.
+      extras.fileFind.den += 1;
+    }
+
+    if (kind.isContentSearch) {
       axes.indexedRetrieval.den += 1;
       axes.indexedRetrieval.num += 1;
       // 같은 대상을 또 찾는 것은 첫 검색이 원하는 것을 못 찾았다는 뜻이다.
@@ -350,6 +376,10 @@ export function coverageRatio(c: CoverageCount): number | null {
 }
 
 export function addExtras(target: ExtraCounts, source: ExtraCounts): void {
+  target.fileFind.num += source.fileFind.num;
+  target.fileFind.den += source.fileFind.den;
+  target.groundedEdit.num += source.groundedEdit.num;
+  target.groundedEdit.den += source.groundedEdit.den;
   target.rework.num += source.rework.num;
   target.rework.den += source.rework.den;
   target.searchRepeat.num += source.searchRepeat.num;
@@ -366,6 +396,8 @@ export function emptyExtras(): ExtraCounts {
     rework: { num: 0, den: 0 },
     searchRepeat: { num: 0, den: 0 },
     ruleFriction: { num: 0, den: 0 },
+    fileFind: { num: 0, den: 0 },
+    groundedEdit: { num: 0, den: 0 },
     askQuestions: 0,
     assistantTurns: 0,
     codeEdits: 0,

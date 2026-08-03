@@ -216,6 +216,7 @@ describe("재작업 체크포인트는 에이전트별이다", () => {
       total_lines: null,
       num_lines: null,
       start_line: null,
+      edit_type: null,
       subagent_tool_calls: null,
       subagent_edit_files: null,
       stdout_tail: null,

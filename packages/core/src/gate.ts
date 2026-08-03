@@ -272,7 +272,9 @@ export function runGate(
       {
         name: "구간 안정성",
         passed: !Number.isNaN(rLag1) && rLag1 >= 0.3,
-        value: Number.isNaN(rLag1) ? "계산 불가" : `lag-1 r=${rLag1.toFixed(3)}`,
+        value: Number.isNaN(rLag1)
+          ? "계산 불가"
+          : `lag-1 r=${rLag1.toFixed(3)}`,
         criterion: ">= 0.3 (delta 비교의 전제)",
       },
       {

@@ -263,24 +263,42 @@ function verifierKindsOf(tokens: string[]): string[] {
   return [...kinds];
 }
 
-function isRecursiveSearchSegment(tokens: string[]): boolean {
+/**
+ * 탐색을 두 종류로 나눈다.
+ *
+ * 파일 찾기(`find -name`)와 내용 찾기(`grep -r`)는 다른 작업이고 옳은 대안도 다르다.
+ * 파일 찾기는 인덱스로 대체할 수 없고 `Glob` 도구가 정답이다. 내용·관계 찾기는
+ * qmd·graphify 가 정답이다. 한 지표에 섞으면 `find` 를 `Glob` 으로 바꿔도 점수가 안 올라
+ * 정직한 개선에 보상이 없어진다.
+ */
+type SearchKind = "file" | "content" | null;
+
+function searchKindOfSegment(tokens: string[]): SearchKind {
   let i = 0;
   if (tokens[0] === "npx" || tokens[0] === "xargs") i = 1;
   const head = tokens[i];
-  if (head === undefined) return false;
+  if (head === undefined) return null;
   const bare = head.split("/").pop() ?? head;
-  if (/^(rg|ag|ack)$/.test(bare)) return true;
+  if (/^(rg|ag|ack)$/.test(bare)) return "content";
   if (bare === "grep") {
     return tokens
       .slice(i + 1)
-      .some((t) => /^-[a-zA-Z]*[rR]/.test(t) || t === "--recursive");
+      .some((t) => /^-[a-zA-Z]*[rR]/.test(t) || t === "--recursive")
+      ? "content"
+      : null;
   }
   if (bare === "find") {
     return tokens
       .slice(i + 1)
-      .some((t) => /^-i?name$/.test(t) || t === "-iregex" || t === "-regex");
+      .some((t) => /^-i?name$/.test(t) || t === "-iregex" || t === "-regex")
+      ? "file"
+      : null;
   }
-  return false;
+  return null;
+}
+
+function isRecursiveSearchSegment(tokens: string[]): boolean {
+  return searchKindOfSegment(tokens) !== null;
 }
 
 interface SourceReadMatch {
@@ -434,7 +452,12 @@ function gitCommitOf(tokens: string[]): {
 export interface BashClassification {
   isFormatter: boolean;
   verifierKinds: string[];
+  /** 파일 찾기와 내용 찾기의 합집합. 진단이 둘을 함께 볼 때 쓴다. */
   isRecursiveSearch: boolean;
+  /** `find -name` 류. 옳은 대안은 Glob 도구다. */
+  isFileFind: boolean;
+  /** `grep -r`·`rg` 류. 옳은 대안은 qmd·graphify 다. */
+  isContentSearch: boolean;
   isSourceRead: boolean;
   fileWriteRule: string | null;
   /** 쓰기 대상 경로. 축3의 코드 편집 판정에 쓴다. 추출 실패면 null. */
@@ -447,6 +470,8 @@ const EMPTY: BashClassification = {
   isFormatter: false,
   verifierKinds: [],
   isRecursiveSearch: false,
+  isFileFind: false,
+  isContentSearch: false,
   isSourceRead: false,
   fileWriteRule: null,
   fileWriteTarget: null,
@@ -469,7 +494,8 @@ export function classifyBash(
 
   const verifierKinds = new Set<string>();
   let isFormatter = false;
-  let isRecursiveSearch = false;
+  let isFileFind = false;
+  let isContentSearch = false;
   let isSourceRead = false;
   let fileWriteRule: string | null = null;
   let fileWriteTarget: string | null = null;
@@ -486,7 +512,9 @@ export function classifyBash(
     }
 
     for (const kind of verifierKindsOf(tokens)) verifierKinds.add(kind);
-    if (isRecursiveSearchSegment(tokens)) isRecursiveSearch = true;
+    const searchKind = searchKindOfSegment(tokens);
+    if (searchKind === "file") isFileFind = true;
+    if (searchKind === "content") isContentSearch = true;
 
     const write = fileWriteOf(segment, tokens, scriptWritesFile);
     if (write !== null && !isScratchTarget(write.target)) {
@@ -508,7 +536,9 @@ export function classifyBash(
   return {
     isFormatter,
     verifierKinds: [...verifierKinds],
-    isRecursiveSearch,
+    isRecursiveSearch: isFileFind || isContentSearch,
+    isFileFind,
+    isContentSearch,
     isSourceRead,
     fileWriteRule,
     fileWriteTarget,
@@ -528,8 +558,13 @@ export function offendingSegments(commandRaw: string | null | undefined): {
   fileWrite: string[];
   recursiveSearch: string[];
 } {
-  const out = { sourceRead: [] as string[], fileWrite: [] as string[], recursiveSearch: [] as string[] };
-  if (commandRaw === null || commandRaw === undefined || commandRaw === "") return out;
+  const out = {
+    sourceRead: [] as string[],
+    fileWrite: [] as string[],
+    recursiveSearch: [] as string[],
+  };
+  if (commandRaw === null || commandRaw === undefined || commandRaw === "")
+    return out;
 
   const stripped = stripHeredocBodies(commandRaw);
   const segments = splitSegments(stripped);
@@ -603,9 +638,22 @@ export function searchTermOf(
 
 /** 값을 받는 검색 옵션. 다음 토큰을 패턴으로 오인하지 않기 위해 건너뛴다. */
 const GREP_VALUE_OPTIONS = new Set([
-  "-e", "--regexp", "-f", "--file", "-m", "--max-count",
-  "-A", "-B", "-C", "--include", "--exclude", "--exclude-dir",
-  "-g", "--glob", "-t", "--type",
+  "-e",
+  "--regexp",
+  "-f",
+  "--file",
+  "-m",
+  "--max-count",
+  "-A",
+  "-B",
+  "-C",
+  "--include",
+  "--exclude",
+  "--exclude-dir",
+  "-g",
+  "--glob",
+  "-t",
+  "--type",
 ]);
 
 function unquote(token: string): string {

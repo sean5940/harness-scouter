@@ -324,6 +324,7 @@ function extractToolResult(
     totalLines: null,
     numLines: null,
     startLine: null,
+    editType: null,
     subagentToolCalls: null,
     subagentEditFiles: null,
   };
@@ -336,6 +337,11 @@ function extractToolResult(
     row.totalLines = num(f["totalLines"]);
     row.numLines = num(f["numLines"]);
     row.startLine = num(f["startLine"]);
+  }
+
+  const kind = obj["type"];
+  if (kind === "create" || kind === "update" || kind === "file_unchanged") {
+    row.editType = kind;
   }
 
   // subagent 결과. 내부 턴은 안 남지만 집계는 남는다 (설계 9절).

@@ -89,6 +89,11 @@ export interface ToolResultRow {
   totalLines: number | null;
   numLines: number | null;
   startLine: number | null;
+  /**
+   * 편집 결과 종류. create·update·file_unchanged.
+   * 새로 만든 파일은 읽을 것이 없으므로 근거 확보율 분모에서 빼는 데 쓴다.
+   */
+  editType: string | null;
   /** subagent 결과의 내부 도구 호출 합계. 커버리지 배지에 쓴다 (설계 9절). */
   subagentToolCalls: number | null;
   subagentEditFiles: number | null;

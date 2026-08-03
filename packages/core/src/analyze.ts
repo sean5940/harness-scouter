@@ -53,8 +53,7 @@ export function analyze(db: ScouterDb, filter: AnalysisFilter = {}): Analysis {
           .length,
       },
       usage: db.usageOf(meta.session_id),
-      reachedArtifact:
-        artifactKinds.has("commit") || artifactKinds.has("pr"),
+      reachedArtifact: artifactKinds.has("commit") || artifactKinds.has("pr"),
     });
   }
 

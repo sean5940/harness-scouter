@@ -27,9 +27,36 @@ export interface ComponentCriterion {
 
 /** 구성요소 라벨을 키로 쓴다. 스탯 구성이 바뀌어도 가이드가 따라온다. */
 export const COMPONENT_CRITERIA: Record<string, ComponentCriterion> = {
-  "인덱스 우선 탐색": {
+  "파일 찾기 규율": {
     measures:
-      "전체 탐색 중 qmd·graphify로 간 비율. Bash 재귀검색과 Grep·Glob은 전수 스캔으로 센다.",
+      "파일 경로를 찾을 때 `Glob` 도구로 간 비율. `find … -name` 이 분모의 나머지다.",
+    whyItMatters:
+      "파일 찾기는 인덱스로 대체할 수 없다. 계측 도구로 하면 어떤 파일을 왜 열었는지가 기록에 남고, bash 로 하면 그 흔적이 사라져 다른 능력치도 함께 실명한다.",
+    actions: [
+      "`find … -name` 을 `Glob` 도구로 바꾼다. 같은 일을 하고 결과도 같다.",
+      "검색 게이트 훅이 `find` 를 잡을 때 qmd 가 아니라 `Glob` 을 권하도록 메시지를 고친다. 작업에 안 맞는 대안을 주면 그냥 포기한다.",
+    ],
+    antipatterns: [
+      "`Glob` 을 의미 없이 여러 번 호출해 분모를 키우기.",
+      "파일을 못 찾은 채로 짐작해서 편집하기. 근거 확보율이 대신 떨어진다.",
+    ],
+  },
+  "근거 확보율": {
+    measures:
+      "기존 코드 파일을 고칠 때 그 파일을 먼저 읽은 비율. 새로 만든 파일은 읽을 것이 없어 분모에서 뺀다.",
+    whyItMatters:
+      "탐색력의 다른 구성요소는 검색한 것들 중 비율만 보므로, 아예 안 찾고 고친 경우를 못 잡는다. 실측에서 코드 편집 다섯 건 중 한 건이 근거 없이 이뤄졌다.",
+    actions: [
+      "편집 전에 그 파일의 해당 범위를 읽는다. 전체를 읽을 필요는 없다.",
+      "위임 brief 에 편집 대상 파일과 읽을 라인 범위를 함께 적는다. subagent 는 범위를 안 주면 읽지 않고 고치거나 통째로 연다.",
+    ],
+    antipatterns: [
+      "형식만 채우려고 파일을 통째로 읽기. 읽기 범위 규율과 컨텍스트 경량성이 대신 떨어진다.",
+    ],
+  },
+  "내용 인덱스 우선": {
+    measures:
+      "내용·관계를 찾을 때 qmd query·graphify 로 간 비율. `grep -r`·`rg`·`Grep` 도구가 분모의 나머지다. 조회 계열(`qmd get`·`status`)은 검색이 아니라 세지 않는다.",
     whyItMatters:
       "전수 스캔은 결과가 많고 관련도 순서가 없어 읽는 토큰이 늘고, 찾은 뒤에도 어느 것이 맞는지 다시 골라야 한다.",
     actions: [
@@ -38,8 +65,8 @@ export const COMPONENT_CRITERIA: Record<string, ComponentCriterion> = {
       "스킬 본문 탐색 단계에 대체 경로를 명령형으로 적는다. 금지만 있고 대안이 없는 규칙은 재발률이 높다.",
     ],
     antipatterns: [
-      "Bash 검색을 Grep 도구로만 바꾸기. 조작 시뮬레이션에서 이 한 수로 점수가 71p 올랐다. 채널만 바뀌고 하는 일은 전수 스캔 그대로다.",
-      "qmd를 의미 없이 여러 번 호출해 분모를 키우기.",
+      "`grep -r` 을 `Grep` 도구로만 바꾸기. 채널만 바뀌고 하는 일은 내용 전수 스캔 그대로라 점수가 오르지 않는다.",
+      "`qmd get` 처럼 검색이 아닌 호출로 분모를 키우기. 이 경로는 정의에서 닫아 두었다.",
     ],
   },
   "검색 한 번에 찾기": {
@@ -238,7 +265,9 @@ export function adviseStat(
     }
   }
 
-  const scoredComponents = stat.components.filter((c) => c.value !== null).length;
+  const scoredComponents = stat.components.filter(
+    (c) => c.value !== null,
+  ).length;
   const bottleneckGain =
     bottleneck === null || bottleneck.value === null || scoredComponents === 0
       ? null

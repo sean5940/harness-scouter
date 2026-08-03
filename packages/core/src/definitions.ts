@@ -62,16 +62,47 @@ export const AXIS_LABELS: Record<AxisKey, string> = {
 };
 
 /**
- * 축5b에서 인덱스 검색으로 인정하는 도구.
+ * 인덱스 검색으로 인정하는 도구.
  *
- * Grep·Glob은 여기 넣지 않는다. 계측 채널이긴 하지만 하는 일은 전수 스캔이고,
- * 축이 묻는 것은 "계측 도구를 썼나"가 아니라 "인덱스를 먼저 봤나"이기 때문이다.
- * 이 선택만으로 축 값이 0.32~0.52로 갈리므로 코드에 고정해 둔다.
+ * 조회 계열(`qmd get`·`multi_get`·`status`)은 검색이 아니라 이미 아는 문서를 꺼내는 것이다.
+ * 분모 크레딧을 주면 그것만 반복 호출해 점수를 올리는 경로가 열린다. 실측에서 이 계열이
+ * 인덱스 분모의 16%를 차지했다.
  */
-export const INDEXED_SEARCH_TOOL_PATTERN = /qmd|graphify/;
+const INDEX_QUERY_TOOLS = /qmd__query|graphify__/;
+const INDEX_NON_SEARCH_TOOLS =
+  /qmd__(get|multi_get|status)|graphify__(graph_stats|list_prs)/;
 
-/** 계측 채널이지만 전수 스캔이라 축5b 분자에 들어가는 도구. */
-export const SCANNING_SEARCH_TOOLS = new Set(["Grep", "Glob"]);
+export function isIndexedSearchTool(name: string): boolean {
+  return INDEX_QUERY_TOOLS.test(name) && !INDEX_NON_SEARCH_TOOLS.test(name);
+}
+
+/**
+ * 내용을 전수 스캔하는 계측 도구.
+ * 계측 채널이지만 하는 일은 스캔이라 인덱스 쪽에 넣지 않는다.
+ */
+export const CONTENT_SCAN_TOOLS = new Set(["Grep"]);
+
+/**
+ * 파일 찾기를 계측 채널로 하는 도구.
+ * `find -name` 의 옳은 대안이므로 벌점이 아니라 가점 쪽이다.
+ */
+export const FILE_FIND_TOOLS = new Set(["Glob"]);
+
+/**
+ * 기존 파일을 고친 편집인가. 근거 확보율의 분모 판정에 쓴다.
+ *
+ * 결과의 `type` 필드(create·update)는 `Write`에만 실린다. `Edit` 계열은 그 필드가
+ * 없어서 그것만 보면 편집 4,450건이 통째로 분모에서 빠졌다. `Edit`은 없는 파일을
+ * 만들 수 없으므로 도구 이름 자체가 기존 파일이라는 증거다.
+ * `Write`에 `type`이 없는 경우는 판정 불가라 분모에서 뺀다.
+ */
+export function isExistingFileEdit(
+  toolName: string,
+  editType: string | null,
+): boolean {
+  if (toolName === "Write") return editType === "update";
+  return toolName === "Edit" || toolName === "MultiEdit";
+}
 
 /**
  * 축1의 no-op 가드.
@@ -84,7 +115,7 @@ export const SCANNING_SEARCH_TOOLS = new Set(["Grep", "Glob"]);
 export function isEffectivePartialRead(
   totalLines: number | null,
   numLines: number | null,
-  startLine: number | null
+  startLine: number | null,
 ): boolean {
   if (totalLines === null) return false;
   const covered = numLines ?? totalLines;
@@ -102,7 +133,7 @@ export function isEffectivePartialRead(
  * 판정 불가면 null을 반환하고 호출부가 그 사실을 남긴다.
  */
 export function verifierOutcome(
-  stdout: string | null | undefined
+  stdout: string | null | undefined,
 ): "pass" | "fail" | null {
   if (stdout === null || stdout === undefined || stdout === "") return null;
   const explicitExit = /EXIT=(\d+)/.exec(stdout);

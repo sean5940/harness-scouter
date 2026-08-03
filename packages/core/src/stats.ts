@@ -11,6 +11,19 @@ import {
 import { emptyEvents, emptyUsage, type Period } from "./periods.js";
 
 /**
+ * 탐색력을 세 구성요소로 나눈 이유.
+ *
+ * 초판은 파일 찾기와 내용 찾기를 한 지표에 섞었고, 그래서 `find -name` 을 `Glob` 으로
+ * 바꿔도 점수가 오르지 않았다(둘 다 분자). 반대로 검색이 아닌 `qmd get` 을 부르면
+ * 분모만 늘어 점수가 올랐다. 정직한 경로는 막히고 조작 경로만 열려 있었다.
+ *
+ * 그리고 "검색한 것들 중 비율"만 보면 아예 안 찾고 고친 경우를 못 잡는다. 실측에서
+ * 코드 편집의 19.9%가 그 파일을 읽지 않고 이뤄졌다. 근거 확보율이 그 구멍을 덮는다.
+ *
+ * 재검색률은 구간 길이와의 잔여 상관(-0.557)이 남아 스탯에서 빼고 진단으로만 남겼다.
+ */
+
+/**
  * 능력치 6개.
  *
  * 축(readScope, indexedRetrieval 등)은 측정 가능한 것에서 거꾸로 나온 기술 지표라
@@ -63,7 +76,7 @@ export const STAT_LABELS: Record<StatKey, string> = {
 };
 
 export const STAT_QUESTIONS: Record<StatKey, string> = {
-  retrieval: "원하는 정보를 정확히 찾나",
+  retrieval: "찾아야 할 때 옳은 방법으로 찾나",
   context: "필요한 만큼만 읽고 토큰을 아끼나",
   verification: "주장 전에 확인하나",
   autonomy: "사람 개입 없이 완주하나",
@@ -153,16 +166,13 @@ export function computeStats(period: Period): StatValue[] {
 
   const byKey: Record<StatKey, StatComponent[]> = {
     retrieval: [
+      component("파일 찾기 규율", ratio(e.fileFind), e.fileFind.den),
       component(
-        "인덱스 우선 탐색",
+        "내용 인덱스 우선",
         axisScore("indexedRetrieval", a.indexedRetrieval),
         a.indexedRetrieval.den,
       ),
-      component(
-        "검색 한 번에 찾기",
-        inverse(ratio(e.searchRepeat)),
-        e.searchRepeat.den,
-      ),
+      component("근거 확보율", ratio(e.groundedEdit), e.groundedEdit.den),
     ],
     context: [
       component(
