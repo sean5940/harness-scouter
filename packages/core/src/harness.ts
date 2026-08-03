@@ -270,6 +270,89 @@ export function scanHarness(
   return { root, sensors, guides, notScanned };
 }
 
+export interface CoherenceReport {
+  /** 어느 규칙 문서에도 이름이 안 나오는 센서. 설명 없이 막는 게이트다. */
+  undocumentedSensors: string[];
+  /** 검사에 쓴 문서 수. 범위가 결론을 크게 바꾸므로 함께 낸다. */
+  documentsChecked: number;
+  sensorsChecked: number;
+}
+
+/**
+ * 가이드와 센서가 어긋나 있는가.
+ *
+ * Fowler 의 미해결 질문 중 하나다. "How do we keep a harness coherent as it grows,
+ * with guides and sensors in sync, not contradicting each other?"
+ *
+ * 여기서는 정확히 셀 수 있는 쪽만 센다. 어느 규칙 문서에도 이름이 안 나오는 센서는
+ * 에이전트가 설명을 못 본 채 막히는 게이트다. 반대 방향(문서에만 있고 집행 없는 규칙)은
+ * 산문에서 규칙을 식별해야 해서 신뢰성이 낮아 넣지 않는다.
+ *
+ * 검사 범위가 결론을 크게 바꾼다. 같은 저장소에서 규칙 문서 셋만 보면 미기재가 21종,
+ * 레퍼런스까지 넣으면 7종, 스킬까지 넣으면 4종이다. 그래서 문서 수를 함께 낸다.
+ */
+export function checkCoherence(
+  inventory: HarnessInventory,
+  documentPaths: string[],
+): CoherenceReport {
+  let corpus = "";
+  const unique = new Set(documentPaths);
+  let read = 0;
+  for (const path of unique) {
+    try {
+      corpus += `${readFileSync(path, "utf8")}\n`;
+      read += 1;
+    } catch {
+      continue;
+    }
+  }
+  const names = [
+    ...new Set(
+      inventory.sensors.filter((s) => s.kind === "hook").map((s) => s.name),
+    ),
+  ];
+  return {
+    undocumentedSensors: names.filter(
+      (n) =>
+        !corpus.includes(n) && !corpus.includes(n.replace(/\.(sh|py)$/, "")),
+    ),
+    documentsChecked: read,
+    sensorsChecked: names.length,
+  };
+}
+
+/** 규칙으로 읽히는 문서만 모은다. 기획·회고 문서는 뺀다. */
+export function ruleDocumentPaths(root: string): string[] {
+  const out: string[] = [];
+  const push = (path: string) => {
+    if (existsSync(path)) out.push(path);
+  };
+  for (const name of ["CLAUDE.md", "CLAUDE.local.md", "AGENTS.md"]) {
+    push(join(root, name));
+    push(join(root, ".agent", name));
+    push(join(root, ".claude", name));
+  }
+  const walk = (dir: string, depth: number): void => {
+    if (depth > 2 || !existsSync(dir)) return;
+    for (const entry of readdirSync(dir)) {
+      const path = join(dir, entry);
+      let st;
+      try {
+        st = statSync(path);
+      } catch {
+        continue;
+      }
+      if (st.isDirectory()) walk(path, depth + 1);
+      else if (entry.endsWith(".md")) out.push(path);
+    }
+  };
+  walk(join(root, ".agent", "references"), 0);
+  for (const dir of [".claude", ".agent", ".codex"]) {
+    walk(join(root, dir, "skills"), 0);
+  }
+  return out;
+}
+
 export interface HarnessCoverage {
   sensorCount: number;
   guideCount: number;

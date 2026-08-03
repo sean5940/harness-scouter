@@ -21,6 +21,8 @@ import {
   OBJECTIVE_LABELS,
   CONTAMINATION_LABELS,
   scanHarness,
+  checkCoherence,
+  ruleDocumentPaths,
   summarizeHarness,
   STAGE_LABELS,
   adviseAll,
@@ -408,6 +410,17 @@ async function main(): Promise<void> {
     if (sum.emptyStages.length > 0) {
       process.stdout.write(
         `\n  센서 없는 단계: ${sum.emptyStages.map((k) => STAGE_LABELS[k]).join(", ")}\n`,
+      );
+    }
+    const coherence = checkCoherence(inventory, ruleDocumentPaths(root));
+    process.stdout.write(
+      `\n  가이드·센서 동기화   규칙 문서 ${coherence.documentsChecked}개에서 훅 ${coherence.sensorsChecked}종 확인\n`,
+    );
+    if (coherence.undocumentedSensors.length === 0) {
+      process.stdout.write("    전부 문서에 이름이 나옵니다.\n");
+    } else {
+      process.stdout.write(
+        `    설명 없이 막는 게이트 ${coherence.undocumentedSensors.length}종: ${coherence.undocumentedSensors.join(" · ")}\n`,
       );
     }
     for (const note of inventory.notScanned) {

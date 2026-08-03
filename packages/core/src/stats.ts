@@ -228,7 +228,11 @@ export function computeStats(period: Period): StatValue[] {
         axisScore("instrumentedChannel", a.instrumentedChannel),
         a.instrumentedChannel.den,
       ),
-      component("게이트 재발 없음", inverse(ratio(e.gateRepeat)), e.gateRepeat.den),
+      component(
+        "게이트 재발 없음",
+        inverse(ratio(e.gateRepeat)),
+        e.gateRepeat.den,
+      ),
     ],
   };
 
