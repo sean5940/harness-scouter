@@ -42,6 +42,25 @@ describe("조작 시나리오", () => {
     }
   });
 
+  it("닫은 시나리오는 판정에서 빠지고 기록으로만 남는다", () => {
+    // 막은 경로를 계속 미달 근거로 삼으면 고쳐도 게이트가 안 움직여 수정할 이유가 사라진다.
+    const closed = GAMING_SCENARIOS.filter((g) => g.closed === true);
+    expect(closed.length).toBeGreaterThan(0);
+    for (const s of closed) {
+      expect(s.corpusEvidence).toMatch(/닫음/);
+    }
+  });
+
+  it("축마다 아직 열린 경로가 하나는 있다", () => {
+    // 전부 닫혔다고 보고되면 조작 저항 검사가 아무것도 안 보는 상태가 된다.
+    for (const axis of AXIS_ORDER) {
+      const open = GAMING_SCENARIOS.filter(
+        (g) => g.axis === axis && g.closed !== true,
+      );
+      expect(open.length, `${axis} 에 열린 시나리오 없음`).toBeGreaterThan(0);
+    }
+  });
+
   it("모든 시나리오가 점수를 올린다", () => {
     // 내리는 변형은 자해지 조작이 아니다. 부호를 유지하므로 여기서 걸러야 한다.
     for (const s of GAMING_SCENARIOS) {

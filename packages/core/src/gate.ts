@@ -20,9 +20,27 @@ export interface GateCheck {
   criterion: string;
 }
 
+/**
+ * 축이 어느 화면을 뒷받침할 수 있는가.
+ *
+ * 초판은 통과 여부를 하나로 냈는데, 화면이 둘이라 그게 맞지 않는다. 헤드라인은
+ * 전수 집계(모든 구간을 합쳐 하나의 점수)이고 구간별 보기는 부차적이다. 두 화면이
+ * 요구하는 것이 다르다.
+ *
+ * 전수 집계는 구간 간 재현성이 필요 없다. 분모가 두껍고, 길이에 안 휘둘리고, 조작으로
+ * 상한까지 밀리지 않으면 된다. 구간별 보기는 거기에 더해 한 구간 안에서 점수가
+ * 재현돼야 한다(split-half). 실측에서 6축 중 5축이 뒤에서만 죽는다.
+ *
+ * 하나로 합쳐 내면 "0/6" 이 되어 전수 집계 화면까지 근거 없는 것처럼 보인다.
+ */
 export interface AxisGate {
   axis: AxisKey;
   checks: GateCheck[];
+  /** 전수 집계 화면을 뒷받침하는가. */
+  supportsAllTime: boolean;
+  /** 구간별 화면을 뒷받침하는가. 전수 집계 조건에 구간 내 재현성이 더 필요하다. */
+  supportsPerPeriod: boolean;
+  /** 두 화면을 모두 뒷받침하는가. */
   passed: boolean;
 }
 
@@ -164,6 +182,14 @@ export interface GamingScenario {
   realWorldForm: string;
   /** 코퍼스에 이미 흔적이 있는가. 없으면 코드 구멍 실증이지 관측된 행동이 아니다. */
   corpusEvidence: string;
+  /**
+   * 분류기 수정으로 이 경로가 막혔는가.
+   *
+   * 막힌 시나리오도 지우지 않고 재발 감시용으로 남긴다. 다만 판정에는 열린 경로만
+   * 쓴다. 막은 것을 계속 미달 근거로 삼으면 고쳐도 게이트가 안 움직여 수정할 이유가
+   * 사라진다.
+   */
+  closed?: boolean;
   /** 대상 축의 counter 만 변형한다. */
   apply: (metrics: SessionMetrics) => void;
 }
@@ -258,6 +284,7 @@ export const GAMING_SCENARIOS: GamingScenario[] = [
     realWorldForm: "스킬 검증 스텝을 단일 명령으로 못박기",
     corpusEvidence:
       "접혀 있던 107건이 수정 후 분모에 들어왔다 (1,585 → 1,692). 2026-08-03 분류기 수정으로 닫음. 재발 감시용으로 남긴다",
+    closed: true,
     apply: (m) => {
       const c = m.axes.verificationRedundancy;
       c.den -= c.num;
@@ -273,6 +300,7 @@ export const GAMING_SCENARIOS: GamingScenario[] = [
     realWorldForm: "같은 읽기를 awk·python3 로 쓰는 별칭 한 줄",
     corpusEvidence:
       "미판정이던 670건이 수정 후 분모에 들어왔다 (8,122 → 8,792). 2026-08-03 분류기 수정으로 닫음. 재발 감시용으로 남긴다",
+    closed: true,
     apply: (m) => {
       const c = m.axes.instrumentedChannel;
       c.den -= c.num;
@@ -302,6 +330,7 @@ export const GAMING_SCENARIOS: GamingScenario[] = [
     realWorldForm: "검색 게이트 훅이 rg 를 git grep 으로 리라이트",
     corpusEvidence:
       "은닉돼 있던 688건이 수정 후 분모에 들어왔다 (3,438 → 4,126). 2026-08-03 분류기 수정으로 닫음. 재발 감시용으로 남긴다",
+    closed: true,
     apply: (m) => {
       const c = m.axes.indexedRetrieval;
       c.den -= c.num;
@@ -368,46 +397,70 @@ export function runGate(
     );
     // 축당 시나리오가 여럿이다. 첫 하나만 보면 등록 순서가 결론을 바꾼다
     // (readScope 는 chunk 순회 8.3p 로 통과, offset 주입 18.4p 로 미달이었다).
-    const attempts = GAMING_SCENARIOS.filter((g) => g.axis === axis).map(
-      (scenario) => {
-        // 구간 경계는 기준 분할을 그대로 쓴다. 조작된 세션으로 다시 분할하면
-        // 분모 변형이 경계를 흔들어 대상 축 값까지 바뀐다. num·den 을 함께 2배로
-        // 하는 조작은 세션 점수가 하나도 안 바뀌는데 재분할하면 +8.5p 가 나왔다.
-        const gamedAxis: AxisCounts[AxisKey] = { num: 0, den: 0 };
-        const perPeriod = periods.map((p) => {
-          const acc = { num: 0, den: 0 };
-          for (const sessionId of p.sessionIds) {
-            const source = bySession.get(sessionId);
-            if (source === undefined) continue;
-            const copy = clone(source);
-            scenario.apply(copy);
-            acc.num += copy.axes[axis].num;
-            acc.den += copy.axes[axis].den;
-          }
-          return acc;
-        });
-        const after = median(
-          perPeriod
-            .map((c) => axisScore(axis, c))
-            .filter((s): s is number => s !== null),
-        );
-        const denAfter = median(perPeriod.map((c) => c.den));
-        void gamedAxis;
-        return {
-          scenario,
-          // 부호를 유지한다. 절대값을 쓰면 자해(분모 부풀리기 -39.1p)가
-          // 최악의 조작으로 보고된다.
-          shift: after - baseline,
-          denAfter,
-          scoredPeriods: perPeriod.filter((c) => axisScore(axis, c) !== null)
-            .length,
-        };
-      },
-    );
+    const attempts = GAMING_SCENARIOS.filter(
+      (g) => g.axis === axis && g.closed !== true,
+    ).map((scenario) => {
+      // 구간 경계는 기준 분할을 그대로 쓴다. 조작된 세션으로 다시 분할하면
+      // 분모 변형이 경계를 흔들어 대상 축 값까지 바뀐다. num·den 을 함께 2배로
+      // 하는 조작은 세션 점수가 하나도 안 바뀌는데 재분할하면 +8.5p 가 나왔다.
+      const gamedAxis: AxisCounts[AxisKey] = { num: 0, den: 0 };
+      const perPeriod = periods.map((p) => {
+        const acc = { num: 0, den: 0 };
+        for (const sessionId of p.sessionIds) {
+          const source = bySession.get(sessionId);
+          if (source === undefined) continue;
+          const copy = clone(source);
+          scenario.apply(copy);
+          acc.num += copy.axes[axis].num;
+          acc.den += copy.axes[axis].den;
+        }
+        return acc;
+      });
+      const after = median(
+        perPeriod
+          .map((c) => axisScore(axis, c))
+          .filter((s): s is number => s !== null),
+      );
+      const denAfter = median(perPeriod.map((c) => c.den));
+      void gamedAxis;
+      return {
+        scenario,
+        // 부호를 유지한다. 절대값을 쓰면 자해(분모 부풀리기 -39.1p)가
+        // 최악의 조작으로 보고된다.
+        shift: after - baseline,
+        denAfter,
+        scoredPeriods: perPeriod.filter((c) => axisScore(axis, c) !== null)
+          .length,
+      };
+    });
     const worst = attempts.reduce<(typeof attempts)[number] | null>(
       (best, a) => (best === null || a.shift > best.shift ? a : best),
       null,
     );
+
+    // 개인최고가 도달 가능한 목표인가.
+    //
+    // 화면은 delta 를 안 쓴다. 개인최고와 이력 백분위를 쓴다. 그래서 검사해야 할 전제도
+    // "이웃 구간이 서로를 예측하는가"가 아니라 "최고값이 다시 갈 수 있는 자리인가"다.
+    // 최고가 얇은 구간의 요행이거나 분포에서 튄 값이면 목표로 제시할 수 없다.
+    // 새 상수를 만들지 않는다. 분모 임계는 이미 있는 PERIOD_BUDGET 이고, 이상치 판정은
+    // 표준 사분위 울타리다.
+    const bestPeriod = periods
+      .map((p) => ({
+        score: axisScore(axis, p.axes[axis]),
+        den: p.axes[axis].den,
+      }))
+      .filter((r): r is { score: number; den: number } => r.score !== null)
+      .reduce<{ score: number; den: number } | null>(
+        (top, r) => (top === null || r.score > top.score ? r : top),
+        null,
+      );
+    const iqr = quantile(sorted, 0.75) - quantile(sorted, 0.25);
+    const outlierFence = quantile(sorted, 0.75) + 1.5 * iqr;
+    const bestIsReachable =
+      bestPeriod !== null &&
+      bestPeriod.den >= PERIOD_BUDGET[axis] &&
+      bestPeriod.score <= outlierFence;
 
     const checks: GateCheck[] = [
       {
@@ -430,13 +483,30 @@ export function runGate(
           : `${reliability.toFixed(3)} (구간 ${half.first.length}개)`,
         criterion: ">= 0.5",
       },
+      // 구간 간 예측력은 판정에서 뺀다.
+      //
+      // lag-1 이 0 근처인 것은 표본 잡음이 아니다. 구간을 2·3·4배로 묶어 재보면
+      // 오히려 더 내려간다(읽기 범위 규율 -0.053 → -0.739). 어떤 집계 단위에서도
+      // 이웃 구간이 서로를 예측하지 않는다는 뜻이라, 고쳐서 통과시킬 수 있는 항목이
+      // 아니다. 그래서 delta 표시를 없앴고, 화면은 개인최고와 백분위만 쓴다.
+      // 쓰지 않는 전제를 계속 pass/fail 로 두면 게이트가 엉뚱한 것을 막는다.
       {
-        name: "구간 안정성",
-        passed: !Number.isNaN(rLag1) && rLag1 >= 0.3,
+        name: "구간 간 예측력(표시)",
+        passed: true,
         value: Number.isNaN(rLag1)
           ? "계산 불가"
-          : `lag-1 r=${rLag1.toFixed(3)}`,
-        criterion: ">= 0.3 (delta 비교의 전제)",
+          : `lag-1 r=${rLag1.toFixed(3)} · 구간 delta 비교는 지원하지 않음`,
+        criterion: "임계 없음. 화면이 delta 를 쓰지 않는다",
+      },
+      {
+        name: "개인최고 도달성",
+        passed: bestIsReachable,
+        value:
+          bestPeriod === null
+            ? "점수 있는 구간 없음"
+            : `최고 ${(bestPeriod.score * 100).toFixed(1)} · 그 구간 분모 ${bestPeriod.den}` +
+              (bestPeriod.score > outlierFence ? " · 분포에서 튄 값" : ""),
+        criterion: `최고 구간 분모 >= ${PERIOD_BUDGET[axis]} 이고 사분위 울타리 안`,
       },
       {
         name: "길이 교란",
@@ -498,7 +568,21 @@ export function runGate(
       },
     ];
 
-    return { axis, checks, passed: checks.every((c) => c.passed) };
+    // 구간 내 재현성(split-half)은 구간별 화면에만 필요하다. 전수 집계는 모든 구간을
+    // 합쳐 하나의 점수를 내므로 구간 사이가 흔들려도 무관하다.
+    const PER_PERIOD_ONLY = new Set(["split-half"]);
+    const supportsAllTime = checks
+      .filter((c) => !PER_PERIOD_ONLY.has(c.name))
+      .every((c) => c.passed);
+    const supportsPerPeriod = checks.every((c) => c.passed);
+
+    return {
+      axis,
+      checks,
+      supportsAllTime,
+      supportsPerPeriod,
+      passed: supportsPerPeriod,
+    };
   });
 
   const correlations: GateResult["correlations"] = [];

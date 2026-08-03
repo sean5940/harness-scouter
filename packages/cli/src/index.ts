@@ -377,8 +377,13 @@ async function main(): Promise<void> {
       `\n  M0.5 재현성 게이트 — 닫힌 구간 ${gate.periodCount}개\n\n`,
     );
     for (const axis of gate.axes) {
+      const support = axis.supportsPerPeriod
+        ? "전수·구간별"
+        : axis.supportsAllTime
+          ? "전수 집계만"
+          : "미달";
       process.stdout.write(
-        `  ${axis.passed ? "통과" : "미달"}  ${AXIS_LABELS[axis.axis]}\n`,
+        `  ${support.padEnd(6)}  ${AXIS_LABELS[axis.axis]}\n`,
       );
       for (const c of axis.checks) {
         process.stdout.write(
@@ -398,10 +403,17 @@ async function main(): Promise<void> {
             )
             .join("")}`,
     );
-    const failed = gate.axes.filter((a) => !a.passed);
+    const allTime = gate.axes.filter((a) => a.supportsAllTime).length;
+    const perPeriod = gate.axes.filter((a) => a.supportsPerPeriod).length;
     process.stdout.write(
-      `\n  결과: ${gate.axes.length - failed.length}/${gate.axes.length} 축 통과\n`,
+      `\n  전수 집계 화면 ${allTime}/${gate.axes.length} 축 · 구간별 화면 ${perPeriod}/${gate.axes.length} 축\n`,
     );
+    if (perPeriod < allTime) {
+      process.stdout.write(
+        "  구간별에서만 죽는 축은 구간 안에서 점수가 재현되지 않는다는 뜻입니다.\n" +
+          "  전수 집계는 모든 구간을 합쳐 하나의 점수를 내므로 그 조건이 필요 없습니다.\n",
+      );
+    }
     db.close();
     return;
   }
