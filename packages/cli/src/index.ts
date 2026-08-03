@@ -8,6 +8,7 @@ import {
   AXIS_ORDER,
   axisScore,
   diagnosePeriod,
+  diagnoseExplorationTiming,
   buildStatWindow,
   mergePeriods,
   adviseAll,
@@ -158,7 +159,9 @@ async function main(): Promise<void> {
     const closed = result.periods.filter((p) => !p.open);
     const current = flags.has("all") ? mergePeriods(closed) : closed.at(-1);
     if (current === undefined || current === null) {
-      process.stdout.write("닫힌 구간이 없습니다. scouter scan을 먼저 실행하세요.\n");
+      process.stdout.write(
+        "닫힌 구간이 없습니다. scouter scan을 먼저 실행하세요.\n",
+      );
       db.close();
       return;
     }
@@ -175,23 +178,30 @@ async function main(): Promise<void> {
     );
     process.stdout.write(
       `  ${w.startedAt.slice(0, 10)} ~ ${w.endedAt.slice(0, 10)} · 세션 ${w.sessionCount}개 · 이력 창 ${w.historyWindows}개` +
-        (w.coverage === null ? "" : ` · 커버리지 ${(w.coverage * 100).toFixed(0)}%`) +
+        (w.coverage === null
+          ? ""
+          : ` · 커버리지 ${(w.coverage * 100).toFixed(0)}%`) +
         (w.judgeable ? "" : "  판정 보류") +
         "\n",
     );
     process.stdout.write(`  ${"─".repeat(80)}\n`);
     for (const stat of w.stats) {
-      const score = stat.score === null ? "  —" : stat.score.toFixed(0).padStart(3);
+      const score =
+        stat.score === null ? "  —" : stat.score.toFixed(0).padStart(3);
       const typical =
         stat.typicalLow === null || stat.typicalHigh === null
           ? "        "
-          : `${stat.typicalLow.toFixed(0)}~${stat.typicalHigh.toFixed(0)}`.padStart(7);
-      const best = stat.best === null ? "  —" : stat.best.toFixed(0).padStart(3);
+          : `${stat.typicalLow.toFixed(0)}~${stat.typicalHigh.toFixed(0)}`.padStart(
+              7,
+            );
+      const best =
+        stat.best === null ? "  —" : stat.best.toFixed(0).padStart(3);
       process.stdout.write(
         `  ${stat.label.padEnd(8)} ${bar(stat.score)} ${score}  ${stat.rank}   통상 ${typical}  최고 ${best}\n`,
       );
       for (const c of stat.components) {
-        const v = c.value === null ? "  —" : (c.value * 100).toFixed(0).padStart(3);
+        const v =
+          c.value === null ? "  —" : (c.value * 100).toFixed(0).padStart(3);
         process.stdout.write(
           `      ${c.label.padEnd(20)} ${v}   n=${String(c.denominator).padStart(5)}\n`,
         );
@@ -312,7 +322,9 @@ async function main(): Promise<void> {
     const prefix = rest[0];
     const label = rest[1];
     if (prefix === undefined || (label !== "good" && label !== "bad")) {
-      process.stdout.write("사용법: scouter label <세션id> good|bad [--note <메모>]\n");
+      process.stdout.write(
+        "사용법: scouter label <세션id> good|bad [--note <메모>]\n",
+      );
       db.close();
       return;
     }
@@ -395,7 +407,10 @@ async function main(): Promise<void> {
       db.close();
       return;
     }
-    const p = report.period;
+    const merged = flags.has("all")
+      ? mergePeriods(result.periods.filter((q) => !q.open))
+      : null;
+    const p = merged ?? report.period;
     process.stdout.write(
       `\n  구간 #${p.index}  ${p.startedAt.slice(0, 10)} ~ ${p.endedAt.slice(0, 10)}  세션 ${p.sessionIds.length}개\n\n`,
     );
@@ -417,6 +432,28 @@ async function main(): Promise<void> {
       }
       process.stdout.write("\n");
     }
+
+    const timing = diagnoseExplorationTiming(db, p);
+    process.stdout.write(
+      "  탐색 적시성 — 조사 구간에서 인덱스를 언제 불렀나\n",
+    );
+    process.stdout.write(
+      "    주체        구간   신호 전   소모 후   안 부름\n",
+    );
+    for (const [label, t] of [
+      ["메인", timing.main],
+      ["subagent", timing.subagent],
+    ] as const) {
+      if (t.episodes === 0) continue;
+      const pct = (x: number) => `${((x * 100) / t.episodes).toFixed(0)}%`;
+      process.stdout.write(
+        `    ${label.padEnd(10)} ${String(t.episodes).padStart(5)}` +
+          `${pct(t.before).padStart(9)}${pct(t.after).padStart(10)}${pct(t.never).padStart(9)}\n`,
+      );
+    }
+    process.stdout.write(
+      "    임계값은 임의값이라 절대 수치가 아니라 두 주체의 격차를 본다.\n\n",
+    );
     db.close();
     return;
   }
@@ -440,9 +477,12 @@ async function main(): Promise<void> {
     const html =
       target === null || target === undefined
         ? renderDiagnosisHtml(report, diagnosePeriod(db, report.period))
-        : renderStatHtml(buildStatWindow(target, closedForHtml, {
-            rankByAbsoluteScore: flags.has("all"),
-          }), { allTime: flags.has("all") });
+        : renderStatHtml(
+            buildStatWindow(target, closedForHtml, {
+              rankByAbsoluteScore: flags.has("all"),
+            }),
+            { allTime: flags.has("all") },
+          );
     if (out === "-") {
       // 확장이 파이프로 받아 Webview에 그대로 넣는다.
       process.stdout.write(html);
