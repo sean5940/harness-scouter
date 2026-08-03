@@ -9,6 +9,9 @@ import {
   axisScore,
   diagnosePeriod,
   diagnoseExplorationTiming,
+  appendLabel,
+  readLabels,
+  defaultLabelPath,
   buildStatWindow,
   mergePeriods,
   adviseAll,
@@ -29,10 +32,10 @@ const USAGE = `harness-scouter
   scouter status [--db <path>] [--all]          능력치 스테이터스 창 (--all 이면 전수 집계)
   scouter report [--db <path>] [--project <s>]  최신 구간의 6축 원시값을 본다
   scouter periods [--db <path>]                 구간 목록을 본다
-  scouter diag [--db <path>]                    최신 구간의 누수 지점과 근거 세션을 본다
+  scouter diag [--db <path>] [--all]            누수 지점·근거 세션과 탐색 적시성을 본다
   scouter guide [--db <path>] [--all]           능력치별 병목과 올리는 법
   scouter label <세션id> good|bad [--note <s>]   세션에 라벨을 붙인다
-  scouter labels [--db <path>]                  붙인 라벨을 본다
+  scouter labels [--labels <path>]              붙인 라벨을 본다 (기본 ~/.harness-scouter/labels.jsonl)
   scouter gate [--db <path>]                    M0.5 재현성 게이트를 돌린다
   scouter json [--db <path>]                    확장이 읽을 JSON을 낸다
   scouter html [--db <path>] [--out <path>] [--all] [--diag]
@@ -334,22 +337,28 @@ async function main(): Promise<void> {
       db.close();
       return;
     }
-    db.setLabel(sessionId, label, flags.get("note") ?? null);
+    const labelPath = flags.get("labels") ?? defaultLabelPath();
+    appendLabel(labelPath, {
+      sessionId,
+      label,
+      note: flags.get("note") ?? null,
+      labeledAt: new Date().toISOString(),
+    });
     process.stdout.write(`${sessionId.slice(0, 8)} → ${label}\n`);
     db.close();
     return;
   }
 
   if (command === "labels") {
-    const db = openDb(flags);
-    const rows = db.listLabels();
+    const labelPath = flags.get("labels") ?? defaultLabelPath();
+    const rows = readLabels(labelPath);
     const good = rows.filter((r) => r.label === "good").length;
     process.stdout.write(
-      `라벨 ${rows.length}건 (good ${good} / bad ${rows.length - good})\n\n`,
+      `라벨 ${rows.length}건 (good ${good} / bad ${rows.length - good})  ${labelPath}\n\n`,
     );
     for (const row of rows) {
       process.stdout.write(
-        `  ${row.session_id.slice(0, 8)}  ${row.label.padEnd(4)}  ${row.labeled_at}  ${row.note ?? ""}\n`,
+        `  ${row.sessionId.slice(0, 8)}  ${row.label.padEnd(4)}  ${row.labeledAt}  ${row.note ?? ""}\n`,
       );
     }
     if (rows.length < 30) {
@@ -357,7 +366,6 @@ async function main(): Promise<void> {
         `\n  M1.5 타당성 게이트는 30건부터 의미가 있습니다. ${30 - rows.length}건 남았습니다.\n`,
       );
     }
-    db.close();
     return;
   }
 
