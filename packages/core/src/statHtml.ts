@@ -14,54 +14,110 @@ function num(value: number | null, digits = 0): string {
 }
 
 const STYLE = `
-:root{--hs-bg:#fff;--hs-text:#1b1f2a;--hs-text-dim:#6b7280;--hs-line:#e6e8ef;
---hs-grid:#c7cbe0;--hs-grid-muted:#e3e5ec;--hs-baseline:#2c3e91;--hs-current:#a8905c;
---hs-muted:#b6bac6;--hs-track:#eef0f6;--hs-panel:#f7f8fc;
---hs-rank-s:#b8860b;--hs-rank-a:#1a7f4b;--hs-rank-b:#2c3e91;--hs-rank-c:#a86423;--hs-rank-d:#b3352c}
-@media (prefers-color-scheme:dark){:root{--hs-bg:#14161c;--hs-text:#e7e9f0;--hs-text-dim:#9aa0ae;
---hs-line:#272a35;--hs-grid:#3a4058;--hs-grid-muted:#282c38;--hs-baseline:#7b90e8;--hs-current:#d9bd7d;
---hs-muted:#565b6a;--hs-track:#232630;--hs-panel:#1a1d25;
---hs-rank-s:#e8c162;--hs-rank-a:#54c68a;--hs-rank-b:#8fa2f0;--hs-rank-c:#e0a05c;--hs-rank-d:#e8776c}}
+/* 팔레트는 계측기 판독창에서 가져왔다. 구조는 중립 슬레이트, 현재값은 청록,
+   개인 최고는 황동. 등급색은 의미색이라 강조색과 분리한다. */
+:root{
+  --bg:#faf9f7; --panel:#f2f1ee; --line:#e2e0db;
+  --text:#1a1d23; --dim:#666c78;
+  --grid:#d5d7dd; --grid-soft:#e8e9ed; --structure:#8a93a3;
+  --now:#2a7d70; --best:#a8802f; --track:#e7e6e2;
+  --s:#a8791c; --a:#2f7d55; --b:#3a63a8; --c:#a8611f; --d:#a83a2e;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#101317; --panel:#171b21; --line:#242932;
+  --text:#e8eaee; --dim:#8d939e;
+  --grid:#2a2f38; --grid-soft:#1c212a; --structure:#4a5568;
+  --now:#3fa896; --best:#c99a4e; --track:#1d222a;
+  --s:#e0b352; --a:#4fa87a; --b:#6d94d6; --c:#c07a3e; --d:#cc6155;
+}}
+/* 뷰어 토글이 OS 설정을 이겨야 하므로 토큰을 다시 정의한다. */
+:root[data-theme="dark"]{
+  --bg:#101317; --panel:#171b21; --line:#242932;
+  --text:#e8eaee; --dim:#8d939e;
+  --grid:#2a2f38; --grid-soft:#1c212a; --structure:#4a5568;
+  --now:#3fa896; --best:#c99a4e; --track:#1d222a;
+  --s:#e0b352; --a:#4fa87a; --b:#6d94d6; --c:#c07a3e; --d:#cc6155;
+}
+:root[data-theme="light"]{
+  --bg:#faf9f7; --panel:#f2f1ee; --line:#e2e0db;
+  --text:#1a1d23; --dim:#666c78;
+  --grid:#d5d7dd; --grid-soft:#e8e9ed; --structure:#8a93a3;
+  --now:#2a7d70; --best:#a8802f; --track:#e7e6e2;
+  --s:#a8791c; --a:#2f7d55; --b:#3a63a8; --c:#a8611f; --d:#a83a2e;
+}
+/* 레이더가 읽는 토큰 */
+:root{--hs-grid:var(--grid); --hs-grid-muted:var(--grid-soft);
+  --hs-baseline:var(--structure); --hs-current:var(--now); --hs-muted:var(--dim);
+  --hs-text:var(--text); --hs-text-dim:var(--dim);
+  --hs-rank-s:var(--s); --hs-rank-a:var(--a); --hs-rank-b:var(--b);
+  --hs-rank-c:var(--c); --hs-rank-d:var(--d)}
+
 *{box-sizing:border-box}
-body{margin:0;padding:26px 20px 56px;background:var(--hs-bg);color:var(--hs-text);
-font-family:-apple-system,BlinkMacSystemFont,'Pretendard','Apple SD Gothic Neo',sans-serif;
-font-size:14px;line-height:1.5}
-.wrap{max-width:760px;margin:0 auto}
-.head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:2px}
-.title{font-size:13px;letter-spacing:.14em;color:var(--hs-text-dim);font-weight:600}
-.level{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1}
-.grade{font-size:26px;font-weight:800}
-.meta{color:var(--hs-text-dim);font-size:12.5px;margin-bottom:4px}
-.warn{color:var(--hs-rank-d);font-weight:600}
-.chart{max-width:520px;margin:2px auto 10px}
-.stat{padding:11px 0;border-bottom:1px solid var(--hs-line)}
+body{margin:0;padding:32px 20px 64px;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,'Pretendard','Apple SD Gothic Neo',system-ui,sans-serif;
+  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.num{font-family:ui-monospace,SFMono-Regular,'SF Mono',Menlo,monospace;
+  font-variant-numeric:tabular-nums}
+.wrap{max-width:780px;margin:0 auto;display:flex;flex-direction:column;gap:26px}
+
+/* 판독창 머리 */
+.readout{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;
+  padding-bottom:16px;border-bottom:1px solid var(--line)}
+.brand{font-size:11px;letter-spacing:.22em;color:var(--dim);font-weight:600;
+  text-transform:uppercase;flex:1 0 100%}
+.lv{font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;
+  font-size:44px;font-weight:700;line-height:.9;letter-spacing:-.02em}
+.lv small{font-size:14px;font-weight:500;color:var(--dim);letter-spacing:.08em;
+  display:block;margin-bottom:4px}
+.gradeChip{font-family:ui-monospace,Menlo,monospace;font-size:20px;font-weight:700;
+  border:1.5px solid currentColor;border-radius:6px;padding:2px 12px;line-height:1.3}
+.scope{margin-left:auto;text-align:right;color:var(--dim);font-size:12px;line-height:1.7}
+.flag{color:var(--d);font-weight:600}
+
+.chart{max-width:500px;margin:0 auto;width:100%}
+
+.stats{display:flex;flex-direction:column}
+.stat{padding:12px 0;border-bottom:1px solid var(--line)}
 .stat:last-child{border-bottom:none}
-.row{display:flex;align-items:center;gap:10px}
-.name{flex:0 0 108px;font-weight:600}
-.q{color:var(--hs-text-dim);font-size:11.5px;font-weight:400;display:block;margin-top:1px}
-.track{flex:1;height:9px;background:var(--hs-track);border-radius:5px;position:relative;overflow:hidden}
-.fill{position:absolute;left:0;top:0;bottom:0;border-radius:5px;background:var(--hs-current)}
-.band{position:absolute;top:0;bottom:0;background:var(--hs-baseline);opacity:.16}
-.tick{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--hs-baseline);opacity:.75}
-.score{flex:0 0 34px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
-.rank{flex:0 0 20px;text-align:center;font-weight:800}
-.parts{display:flex;flex-wrap:wrap;gap:6px;margin:7px 0 0 118px}
-.part{font-size:11.5px;color:var(--hs-text-dim);background:var(--hs-panel);
-border-radius:5px;padding:3px 8px;white-space:nowrap}
-.part b{color:var(--hs-text);font-weight:600;font-variant-numeric:tabular-nums}
-.foot{margin-top:22px;padding-top:14px;border-top:1px solid var(--hs-line);
-color:var(--hs-text-dim);font-size:11.5px;line-height:1.7}
-.guide{margin-top:26px;padding-top:18px;border-top:1px solid var(--hs-line)}
-.guide h2{font-size:13px;letter-spacing:.1em;color:var(--hs-text-dim);margin:0 0 12px;font-weight:600}
-.adv{background:var(--hs-panel);border-radius:8px;padding:12px 14px;margin-bottom:10px}
-.adv .top{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
-.adv .nm{font-weight:700}
-.adv .gap{font-size:12px;color:var(--hs-rank-a);font-weight:600}
-.adv .bn{font-size:12px;color:var(--hs-text-dim);margin-left:auto}
-.adv .crit{font-size:12px;color:var(--hs-text-dim);margin:7px 0 2px}
-.adv ul{margin:6px 0 0;padding-left:16px;font-size:12.5px}
-.adv li{margin:2px 0}
-.adv li.no{color:var(--hs-rank-d)}
+.row{display:flex;align-items:center;gap:12px}
+.name{flex:0 0 116px;font-weight:600;font-size:13.5px}
+.q{color:var(--dim);font-size:11px;font-weight:400;display:block;margin-top:2px;
+  letter-spacing:.01em}
+.track{flex:1;min-width:80px;height:10px;background:var(--track);border-radius:2px;
+  position:relative;overflow:hidden}
+.fill{position:absolute;left:0;top:0;bottom:0;background:var(--now);border-radius:2px}
+.band{position:absolute;top:0;bottom:0;background:var(--structure);opacity:.28}
+.tick{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--best)}
+.val{flex:0 0 32px;text-align:right;font-weight:600;font-size:14px}
+.rk{flex:0 0 24px;text-align:center;font-weight:700;font-size:13px}
+.parts{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px;padding-left:128px}
+.part{font-size:11px;color:var(--dim);background:var(--panel);border-radius:3px;
+  padding:3px 8px;white-space:nowrap;border:1px solid var(--line)}
+.part b{color:var(--text);font-weight:600}
+.part .n{opacity:.65;margin-left:2px}
+
+.guide{display:flex;flex-direction:column;gap:10px}
+.guide h2{font-size:11px;letter-spacing:.18em;color:var(--dim);margin:0;
+  font-weight:600;text-transform:uppercase}
+.adv{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 16px}
+.adv .top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.adv .nm{font-weight:700;font-size:14px}
+.adv .gain{font-size:12px;color:var(--now);font-weight:600}
+.adv .bn{font-size:11.5px;color:var(--dim);margin-left:auto}
+.adv .crit{font-size:12px;color:var(--dim);line-height:1.6;
+  padding-left:11px;border-left:2px solid var(--line)}
+.adv ul{margin:9px 0 0;padding-left:17px;font-size:12.5px;line-height:1.65}
+.adv li{margin:3px 0}
+.adv li.no{color:var(--d)}
+.adv li.no::marker{content:"× "}
+
+.foot{color:var(--dim);font-size:11.5px;line-height:1.8;padding-top:16px;
+  border-top:1px solid var(--line)}
+@media (max-width:560px){
+  .name{flex-basis:96px}
+  .parts{padding-left:0}
+  .scope{margin-left:0;text-align:left;flex:1 0 100%}
+}
 `;
 
 function renderStat(stat: StatEntry, gray: boolean): string {
@@ -73,35 +129,35 @@ function renderStat(stat: StatEntry, gray: boolean): string {
       ? ""
       : `<span class="band" style="left:${low.toFixed(1)}%;width:${Math.max(
           0.5,
-          high - low
+          high - low,
         ).toFixed(1)}%"></span>`;
   const bestTick =
     stat.best === null
       ? ""
       : `<span class="tick" style="left:${Math.min(99.5, stat.best).toFixed(
-          1
+          1,
         )}%"></span>`;
 
   const parts = stat.components
     .map(
       (c) =>
-        `<span class="part">${escapeHtml(c.label)} <b>${
+        `<span class="part">${escapeHtml(c.label)} <b class="num">${
           c.value === null ? "—" : (c.value * 100).toFixed(0)
-        }</b> <span style="opacity:.7">n=${c.denominator.toLocaleString()}</span></span>`
+        }</b><span class="n num">n=${c.denominator.toLocaleString()}</span></span>`,
     )
     .join("");
 
   return `<div class="stat">
   <div class="row">
     <div class="name">${escapeHtml(stat.label)}<span class="q">${escapeHtml(
-    stat.question
-  )}</span></div>
+      stat.question,
+    )}</span></div>
     <div class="track">${band}<span class="fill" style="width:${Math.max(
-    0,
-    Math.min(100, score)
-  ).toFixed(1)}%"></span>${bestTick}</div>
-    <div class="score">${num(stat.score)}</div>
-    <div class="rank" style="color:${gray ? "var(--hs-muted)" : rankFill(stat.rank)}">${stat.rank}</div>
+      0,
+      Math.min(100, score),
+    ).toFixed(1)}%"></span>${bestTick}</div>
+    <div class="val num">${num(stat.score)}</div>
+    <div class="rk num" style="color:${gray ? "var(--dim)" : rankFill(stat.rank)}">${stat.rank}</div>
   </div>
   <div class="parts">${parts}</div>
 </div>`;
@@ -118,7 +174,7 @@ function renderStat(stat: StatEntry, gray: boolean): string {
  */
 export function renderStatHtml(
   window: StatWindow,
-  options: { allTime?: boolean } = {}
+  options: { allTime?: boolean } = {},
 ): string {
   const gray = !window.judgeable;
   const scope =
@@ -134,24 +190,20 @@ export function renderStatHtml(
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <title>Harness Scouter</title><style>${STYLE}</style></head>
 <body><div class="wrap">
-<div class="head">
-  <span class="title">HARNESS SCOUTER</span>
-  <span class="level">Lv.${window.level}</span>
-  <span class="grade" style="color:${rankFill(window.overallRank)}">${
-    window.overallRank
-  }</span>
+<div class="readout">
+  <span class="brand">Harness Scouter</span>
+  <span class="lv"><small>LEVEL</small>${window.level}</span>
+  <span class="gradeChip" style="color:${gray ? "var(--dim)" : rankFill(window.overallRank)}">${window.overallRank}</span>
+  <span class="scope">${scope} · 세션 ${window.sessionCount}개<br>
+    ${window.startedAt.slice(0, 10)} ~ ${window.endedAt.slice(0, 10)}<br>
+    계측 커버리지 <span class="num">${coverage}</span>${gray ? ' · <span class="flag">판정 보류</span>' : ""}</span>
 </div>
-<div class="meta">${scope} · ${window.startedAt.slice(
-    0,
-    10
-  )} ~ ${window.endedAt.slice(0, 10)} · 세션 ${
-    window.sessionCount
-  }개 · 계측 커버리지 ${coverage}${
-    gray ? ' · <span class="warn">커버리지 미달로 판정 보류</span>' : ""
-  }</div>
 <div class="chart">${renderRadarSvg(window.stats, { grayedOut: gray })}</div>
-${window.stats.map((stat) => renderStat(stat, gray)).join("\n")}
-${gray ? "" : `<div class="guide">
+<div class="stats">${window.stats.map((stat) => renderStat(stat, gray)).join("\n")}</div>
+${
+  gray
+    ? ""
+    : `<div class="guide">
   <h2>성장 가이드${options.allTime === true ? " · 병목 해소 이득 순" : " · 개인 최고까지의 격차 순"}</h2>
   ${adviseAll(window.stats, { allTime: options.allTime === true })
     .filter((a) =>
@@ -168,7 +220,9 @@ ${gray ? "" : `<div class="guide">
         <span>${options.allTime === true ? num(a.score) : `${num(a.score)} → 최고 ${num(a.best)}`}</span>
         <span class="gap">병목 해소 시 +${num(a.bottleneckGain)}</span>
         <span class="bn">병목 ${a.bottleneck === null ? "—" : escapeHtml(a.bottleneck.label)} ${
-          a.bottleneck?.value == null ? "" : (a.bottleneck.value * 100).toFixed(0)
+          a.bottleneck?.value == null
+            ? ""
+            : (a.bottleneck.value * 100).toFixed(0)
         }</span>
       </div>
       ${c === null ? "" : `<div class="crit">${escapeHtml(c.measures)}</div>`}
@@ -182,7 +236,8 @@ ${gray ? "" : `<div class="guide">
     </div>`;
     })
     .join("")}
-</div>`}
+</div>`
+}
 ${gray ? '<div class="guide"><h2>성장 가이드</h2><div class="adv">계측 커버리지가 임계 아래라 이 구간의 값을 판정하지 않습니다. 커버리지가 회복된 구간에서 다시 보세요.</div></div>' : ""}
 <div class="foot">
 굵은 육각형은 100점 경계, 파선은 개인 최고, 채운 면은 지금입니다.
