@@ -254,9 +254,10 @@ export const GAMING_SCENARIOS: GamingScenario[] = [
     label: "같은 kind 반복을 && 로 한 호출에 묶어 재실행 판정을 소거",
     invariant: "verifier 프로세스 실행 횟수가 같다",
     mechanism:
-      "verifierKinds 가 Set 이라 한 호출 안의 같은 kind 반복이 1건으로 접힌다. `npx tsc && npx tsc && npx tsc` 가 [tsc] 하나다",
+      "verifierKinds 가 Set 이라 한 호출 안의 같은 kind 반복이 1건으로 접혔다. 지금은 실행 횟수를 센다",
     realWorldForm: "스킬 검증 스텝을 단일 명령으로 못박기",
-    corpusEvidence: "verifier 호출 1,469건 중 여러 kind 묶음 139건",
+    corpusEvidence:
+      "접혀 있던 107건이 수정 후 분모에 들어왔다 (1,585 → 1,692). 2026-08-03 분류기 수정으로 닫음. 재발 감시용으로 남긴다",
     apply: (m) => {
       const c = m.axes.verificationRedundancy;
       c.den -= c.num;
@@ -268,10 +269,10 @@ export const GAMING_SCENARIOS: GamingScenario[] = [
     label: "cat 대신 awk·python3·node 로 읽어 분자와 분모에서 동시 탈락",
     invariant: "접근한 파일 집합이 같다",
     mechanism:
-      "bash.ts 의 소스읽기 판정이 cat·head·tail·bat·sed 다섯 이름만 본다. awk·python3·node·perl 은 아예 안 잡힌다",
+      "소스읽기 판정이 cat·head·tail·bat·sed 다섯 이름만 봤다. 지금은 awk 와 인터프리터 인라인 코드(-c·-e·-p)도 잡는다. 스크립트 실행은 읽기가 아니라 제외한다",
     realWorldForm: "같은 읽기를 awk·python3 로 쓰는 별칭 한 줄",
     corpusEvidence:
-      "미판정 2,152건 (소스·문서 확장자 1,427건, 계상된 것은 2,394건)",
+      "미판정이던 670건이 수정 후 분모에 들어왔다 (8,122 → 8,792). 2026-08-03 분류기 수정으로 닫음. 재발 감시용으로 남긴다",
     apply: (m) => {
       const c = m.axes.instrumentedChannel;
       c.den -= c.num;
@@ -297,9 +298,10 @@ export const GAMING_SCENARIOS: GamingScenario[] = [
     label: "git grep·비재귀 글롭 grep 으로 전수 스캔을 분류기에서 제외",
     invariant: "스캔한 파일 집합이 같다",
     mechanism:
-      "bash.ts searchKindOfSegment 가 세그먼트 선두 토큰만 보고 rg·ag·ack·grep -r·find -name 만 매칭한다. `git grep` 은 선두가 git 이라 전 필드 false 다",
+      "searchKindOfSegment 가 세그먼트 선두 토큰만 봐서 `git grep` 이 전 필드 false 였다. 지금은 git grep 과 비재귀 글롭 grep 을 함께 잡는다",
     realWorldForm: "검색 게이트 훅이 rg 를 git grep 으로 리라이트",
-    corpusEvidence: "이미 440건 은닉 (계상된 스캔 1,218건 대비 26.5%)",
+    corpusEvidence:
+      "은닉돼 있던 688건이 수정 후 분모에 들어왔다 (3,438 → 4,126). 2026-08-03 분류기 수정으로 닫음. 재발 감시용으로 남긴다",
     apply: (m) => {
       const c = m.axes.indexedRetrieval;
       c.den -= c.num;

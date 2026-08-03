@@ -98,6 +98,31 @@ export function isNonTextFile(filePath: string | null | undefined): boolean {
   return ext !== null && NON_TEXT_EXTENSIONS.has(ext);
 }
 
+/**
+ * 경로 토큰을 비교 가능한 형태로 만든다.
+ *
+ * `/tmp/../app/foo.ts` 는 실제로는 `/app/foo.ts` 인데 문자열 매칭만 하면 임시 경로로
+ * 보여 예외로 빠진다. 코퍼스에 사례는 없지만 접두사 한 조각으로 축을 끄는 경로라 닫는다.
+ */
+function normalizePath(token: string): string {
+  const parts: string[] = [];
+  for (const seg of token.split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === ".." && parts.length > 0 && parts[parts.length - 1] !== "..") {
+      parts.pop();
+      continue;
+    }
+    parts.push(seg);
+  }
+  return (token.startsWith("/") ? "/" : "") + parts.join("/");
+}
+
+/** 인터프리터 인라인 코드에서 파일 경로만 남긴다. `open('app/a.ts')` → `app/a.ts` */
+function stripQuotesAndCalls(token: string): string {
+  const match = /["']([^"']*\/[^"']*\.[A-Za-z0-9]+)["']/.exec(token);
+  return match?.[1] ?? token.replace(/^["']|["']$/g, "");
+}
+
 function isReadableSourcePath(token: string): boolean {
   const ext = extensionOf(token);
   return ext !== null && (CODE_EXTENSIONS.has(ext) || DOC_EXTENSIONS.has(ext));
@@ -111,8 +136,9 @@ function isReadableSourcePath(token: string): boolean {
  */
 function isScratchTarget(target: string | null): boolean {
   if (target === null) return false;
+  // 정규화 후에 본다. `/tmp/../app/foo.ts` 가 임시 경로로 통과하던 구멍을 막는다.
   return /^\/tmp\/|^\/private\/tmp\/|\/var\/folders\/|scratchpad|\.log$|\.tmp$/.test(
-    target,
+    normalizePath(target),
   );
 }
 
@@ -180,6 +206,20 @@ function splitSegments(command: string): string[] {
   out.push(current);
 
   return out.map((seg) => seg.trim()).filter((seg) => seg !== "");
+}
+
+/**
+ * `bash -lc "…"` 껍데기를 벗긴다.
+ *
+ * 껍데기 한 겹으로 안쪽이 통째로 안 보였다. `bash -lc "git commit -m x"` 가 커밋으로
+ * 안 잡혀 검증 신선도의 분모가 사라지고, 닫힌 구간이 28에서 8로 줄었다.
+ * 점수를 올리는 게 아니라 관측을 없애는 종류라 더 나쁘다.
+ */
+function unwrapShellWrapper(command: string): string {
+  const match = /^\s*(?:bash|sh|zsh)\s+-[a-z]*c\s+(['"])([\s\S]*)\1\s*$/.exec(
+    command,
+  );
+  return match?.[2] ?? command;
 }
 
 /** 환경변수 대입과 래퍼를 걷어낸 실행 토큰들. */
@@ -273,19 +313,32 @@ function verifierKindsOf(tokens: string[]): string[] {
  */
 type SearchKind = "file" | "content" | null;
 
+/**
+ * 여러 파일을 대상으로 하는가.
+ *
+ * `-r` 이 없어도 글롭이 붙으면 다파일 스캔이다. `grep foo app/*.ts` 는 재귀 옵션이
+ * 없다는 이유로 통째로 빠져 있었다.
+ */
+function targetsManyFiles(args: string[]): boolean {
+  return args.some((t) => !t.startsWith("-") && t.includes("*"));
+}
+
 function searchKindOfSegment(tokens: string[]): SearchKind {
   let i = 0;
   if (tokens[0] === "npx" || tokens[0] === "xargs") i = 1;
+  // `git grep` 은 선두가 git 이라 전 필드가 안 잡혔다. 실측에서 스캔 트래픽의
+  // 26.5%(440건)가 이 형태로 분류기 밖에 있었다.
+  if (tokens[i] === "git" && tokens[i + 1] === "grep") return "content";
   const head = tokens[i];
   if (head === undefined) return null;
   const bare = head.split("/").pop() ?? head;
   if (/^(rg|ag|ack)$/.test(bare)) return "content";
   if (bare === "grep") {
-    return tokens
-      .slice(i + 1)
-      .some((t) => /^-[a-zA-Z]*[rR]/.test(t) || t === "--recursive")
-      ? "content"
-      : null;
+    const args = tokens.slice(i + 1);
+    const recursive = args.some(
+      (t) => /^-[a-zA-Z]*[rR]/.test(t) || t === "--recursive",
+    );
+    return recursive || targetsManyFiles(args) ? "content" : null;
   }
   if (bare === "find") {
     return tokens
@@ -344,10 +397,28 @@ function sourceReadOf(
   if (head === undefined) return { matched: false, target: null };
   const bare = head.split("/").pop() ?? head;
 
-  if (!/^(cat|head|tail|bat|sed)$/.test(bare))
+  // 이름 목록이 다섯 개뿐이라 awk·python3·node·perl 로 같은 읽기를 하면 판정 자체가
+  // 안 됐다. 분자에서만 빠지는 게 아니라 분모에서도 빠져 축이 그 활동을 통째로 못 본다.
+  // 실측 2,152건이 그 상태였고, 그중 1,427건이 소스·문서 확장자를 인자로 들고 있었다.
+  if (!/^(cat|head|tail|bat|sed|awk|perl|python3?|node)$/.test(bare))
     return { matched: false, target: null };
   if (bare === "sed" && !tokens.some((t) => t === "-n" || /^-n/.test(t))) {
     return { matched: false, target: null };
+  }
+
+  // 인터프리터는 인라인 코드일 때만 본다. `node scripts/build.mjs` 는 스크립트 실행이지
+  // 파일을 텍스트로 읽는 것이 아니다. 인자가 코드 파일이라는 것만으로 읽기라고 하면
+  // 빌드·테스트 실행이 통째로 계측 위반이 된다.
+  const isInterpreter = /^(python3?|node|perl)$/.test(bare);
+  if (isInterpreter) {
+    if (!tokens.some((t) => /^-[a-zA-Z]*[cep]$/.test(t)))
+      return { matched: false, target: null };
+    const inlined = tokens.find(
+      (t) => t.includes("/") && isReadableSourcePath(stripQuotesAndCalls(t)),
+    );
+    return inlined === undefined
+      ? { matched: false, target: null }
+      : { matched: true, target: stripQuotesAndCalls(inlined) };
   }
 
   const fileArg = tokens
@@ -519,13 +590,15 @@ export function classifyBash(
     return { ...EMPTY };
 
   const scriptWritesFile = SCRIPT_WRITES_FILE.test(commandRaw);
-  const stripped = stripHeredocBodies(commandRaw);
+  const stripped = stripHeredocBodies(unwrapShellWrapper(commandRaw));
   const segments = splitSegments(stripped);
   const pipelineHasSourcePath = segments.some((s) =>
     s.split(/\s+/).some((t) => !t.startsWith("-") && isReadableSourcePath(t)),
   );
 
-  const verifierKinds = new Set<string>();
+  // 종류가 아니라 실행 횟수를 센다. Set 이면 `npx tsc && npx tsc && npx tsc` 가
+  // [tsc] 하나로 접혀 공회전이 안 보인다. 한 호출로 묶는 것이 조작 경로였다.
+  const verifierKinds: string[] = [];
   let isFormatter = false;
   let isFileFind = false;
   let isContentSearch = false;
@@ -545,7 +618,7 @@ export function classifyBash(
       continue;
     }
 
-    for (const kind of verifierKindsOf(tokens)) verifierKinds.add(kind);
+    verifierKinds.push(...verifierKindsOf(tokens));
     const searchKind = searchKindOfSegment(tokens);
     if (searchKind === "file") isFileFind = true;
     if (searchKind === "content") isContentSearch = true;
