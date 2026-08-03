@@ -34,6 +34,11 @@ export interface ExtraCounts {
   searchRepeat: AxisCount;
   /** 훅·권한에 막힌 호출 비율 */
   ruleFriction: AxisCount;
+  /**
+   * 차단 중 이미 걸린 적 있는 게이트에 다시 걸린 것.
+   * 차단이 있어야 분모가 생기므로 센서 없는 하네스는 만점이 아니라 판정 불가다.
+   */
+  gateRepeat: AxisCount;
   /** 파일 찾기를 계측 도구(Glob)로 한 비율. `find -name` 이 분모의 나머지다. */
   fileFind: AxisCount;
   /** 기존 파일 편집 중 그 파일을 먼저 읽은 비율. 새로 만든 파일은 분모에서 뺀다. */
@@ -119,6 +124,7 @@ export function computeSessionMetrics(
     rework: { num: 0, den: 0 },
     searchRepeat: { num: 0, den: 0 },
     ruleFriction: { num: 0, den: 0 },
+    gateRepeat: { num: 0, den: 0 },
     fileFind: { num: 0, den: 0 },
     groundedEdit: { num: 0, den: 0 },
     askQuestions: 0,
@@ -150,6 +156,15 @@ export function computeSessionMetrics(
   // 같은 순서 비교가 조용히 뒤집힌다.
   let order = 0;
 
+  const gatesSeen = new Map<string, Set<string>>();
+  const agentKeyOf = (c: ToolCallRecord): string => c.agent_id ?? "main";
+  /** 어느 게이트인가. 같은 게이트를 또 건드렸는지 보려면 신원이 필요하다. */
+  const gateSubjectOf = (c: ToolCallRecord): string => {
+    if (c.name !== "Bash" || c.command === null) return c.name;
+    const head = c.command.trim().split(/\s+/)[0] ?? "bash";
+    return head.split("/").pop() ?? head;
+  };
+
   for (const call of calls) {
     order += 1;
 
@@ -160,6 +175,19 @@ export function computeSessionMetrics(
     if (call.denial_kind !== null) {
       blockedCalls += 1;
       extras.ruleFriction.num += 1;
+      // 같은 게이트에 또 걸렸는가. 차단 건수 자체는 해석이 안 된다. 훅을 하나도 안 깐
+      // 하네스가 차단 0건으로 만점을 받기 때문이다. 재발률은 차단이 있어야 분모가
+      // 생기므로 센서 없는 하네스가 만점이 아니라 판정 불가가 된다.
+      // 에이전트별로 본다. 다른 에이전트는 서로의 차단 이력을 못 본다.
+      const gateId = `${call.denial_kind}|${gateSubjectOf(call)}`;
+      const agentGates = gatesSeen.get(agentKeyOf(call));
+      if (agentGates === undefined) {
+        gatesSeen.set(agentKeyOf(call), new Set([gateId]));
+      } else {
+        if (agentGates.has(gateId)) extras.gateRepeat.num += 1;
+        agentGates.add(gateId);
+      }
+      extras.gateRepeat.den += 1;
       continue;
     }
 
@@ -391,6 +419,8 @@ export function addExtras(target: ExtraCounts, source: ExtraCounts): void {
   target.searchRepeat.den += source.searchRepeat.den;
   target.ruleFriction.num += source.ruleFriction.num;
   target.ruleFriction.den += source.ruleFriction.den;
+  target.gateRepeat.num += source.gateRepeat.num;
+  target.gateRepeat.den += source.gateRepeat.den;
   target.askQuestions += source.askQuestions;
   target.assistantTurns += source.assistantTurns;
   target.codeEdits += source.codeEdits;
@@ -401,6 +431,7 @@ export function emptyExtras(): ExtraCounts {
     rework: { num: 0, den: 0 },
     searchRepeat: { num: 0, den: 0 },
     ruleFriction: { num: 0, den: 0 },
+    gateRepeat: { num: 0, den: 0 },
     fileFind: { num: 0, den: 0 },
     groundedEdit: { num: 0, den: 0 },
     askQuestions: 0,
