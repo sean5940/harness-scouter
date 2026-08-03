@@ -202,10 +202,21 @@ export interface GrowthAdvice {
   label: string;
   score: number | null;
   best: number | null;
-  /** 개인 최고까지 남은 점수. 도달 가능성이 증명된 목표다. */
+  /**
+   * 개인 최고까지 남은 점수. 도달 가능성이 증명된 목표다.
+   * 전수 집계 화면에서는 null 이다. 집계값은 이벤트 가중이고 최고는 구간 가중이라
+   * 둘을 빼면 사과와 오렌지를 비교하게 된다.
+   */
   gapToBest: number | null;
   /** 격차를 만든 구성요소. 가장 낮은 것을 고른다. */
   bottleneck: StatComponent | null;
+  /**
+   * 병목을 만점까지 올렸을 때 스탯이 실제로 오르는 몫.
+   *
+   * 구성요소가 많은 스탯일수록 하나를 고쳐도 덜 오른다. 이걸 안 보여주면 여지만 보고
+   * 우선순위를 잘못 잡는다. 구성요소 4개짜리는 2개짜리의 절반만 닫힌다.
+   */
+  bottleneckGain: number | null;
   criterion: ComponentCriterion | null;
 }
 
@@ -215,7 +226,10 @@ export interface GrowthAdvice {
  * 목표를 개인 최고로 잡는 이유는 그 값이 이 하네스로 도달 가능하다는 것이 이미
  * 관측됐기 때문이다. 임의의 절대 임계는 근거가 없고, 남과의 비교는 표본이 없다.
  */
-export function adviseStat(stat: StatEntry): GrowthAdvice {
+export function adviseStat(
+  stat: StatEntry,
+  options: AdviceOptions = {},
+): GrowthAdvice {
   let bottleneck: StatComponent | null = null;
   for (const component of stat.components) {
     if (component.value === null) continue;
@@ -224,16 +238,23 @@ export function adviseStat(stat: StatEntry): GrowthAdvice {
     }
   }
 
+  const scoredComponents = stat.components.filter((c) => c.value !== null).length;
+  const bottleneckGain =
+    bottleneck === null || bottleneck.value === null || scoredComponents === 0
+      ? null
+      : ((1 - bottleneck.value) * 100) / scoredComponents;
+
   return {
     stat: stat.key,
     label: stat.label,
     score: stat.score,
     best: stat.best,
     gapToBest:
-      stat.score === null || stat.best === null
+      options.allTime === true || stat.score === null || stat.best === null
         ? null
         : Math.max(0, stat.best - stat.score),
     bottleneck,
+    bottleneckGain,
     criterion:
       bottleneck === null
         ? null
@@ -241,9 +262,26 @@ export function adviseStat(stat: StatEntry): GrowthAdvice {
   };
 }
 
-/** 격차가 큰 순서로 정렬한다. 어디부터 손대야 이득이 큰지 보여준다. */
-export function adviseAll(stats: StatEntry[]): GrowthAdvice[] {
-  return stats
-    .map(adviseStat)
-    .sort((a, b) => (b.gapToBest ?? 0) - (a.gapToBest ?? 0));
+export interface AdviceOptions {
+  /**
+   * 전수 집계 화면인지.
+   * 집계값과 구간 최고는 가중이 달라 격차를 빼면 안 된다. 대신 병목 심각도로 정렬한다.
+   */
+  allTime?: boolean;
+}
+
+/**
+ * 손대서 얻는 이득이 큰 순서로 정렬한다.
+ *
+ * 구간 화면은 개인 최고까지의 격차로, 전수 화면은 병목을 고쳤을 때 닫히는 몫으로 정렬한다.
+ * 전수에서 격차를 쓰면 이벤트 가중 집계값과 구간 가중 최고를 빼게 된다.
+ */
+export function adviseAll(
+  stats: StatEntry[],
+  options: AdviceOptions = {},
+): GrowthAdvice[] {
+  const advice = stats.map((stat) => adviseStat(stat, options));
+  return options.allTime === true
+    ? advice.sort((a, b) => (b.bottleneckGain ?? 0) - (a.bottleneckGain ?? 0))
+    : advice.sort((a, b) => (b.gapToBest ?? 0) - (a.gapToBest ?? 0));
 }

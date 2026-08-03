@@ -50,6 +50,14 @@ export interface SessionMetrics {
 
 const EDIT_TOOLS = new Set(["Edit", "Write", "NotebookEdit", "MultiEdit"]);
 
+/**
+ * 재검색으로 볼 창 크기.
+ *
+ * 같은 것을 "다시" 찾았다고 하려면 시간적으로 붙어 있어야 한다. 창이 없으면 세션이
+ * 길수록 반복률이 기계적으로 오른다.
+ */
+const SEARCH_REPEAT_WINDOW = 10;
+
 export function emptyAxes(): AxisCounts {
   return {
     readScope: { num: 0, den: 0 },
@@ -114,7 +122,11 @@ export function computeSessionMetrics(
   // 파일의 체크포인트가 되어 재작업이 과대계상된다.
   const editedBefore = new Map<string, number>();
   const lastCheckpoint = new Map<string, number>();
-  const seenSearches = new Set<string>();
+  // 검색어를 세션 내내 누적하면 검색을 많이 할수록 반복률이 저절로 오른다
+  // (실측 2.0% → 16.7%, 8배). 100번째 검색이 첫 검색과 겹치는 것은 못 찾은 것이 아니라
+  // 다른 작업이다. 최근 창 안에서 겹칠 때만 재검색으로 센다.
+  const recentSearches = new Map<string, number>();
+  let searchOrder = 0;
 
   const hasSidechainRecords = calls.some((c) => c.is_sidechain === 1);
   const readStates = new Map<string, ReadState>();
@@ -258,9 +270,16 @@ export function computeSessionMetrics(
       // 명령 전체가 아니라 검색어로 비교한다. 경로·플래그는 바꾸면서 term은 유지하기 때문이다.
       const term = searchTermOf(call.command);
       if (term !== null) {
+        searchOrder += 1;
         extras.searchRepeat.den += 1;
-        if (seenSearches.has(term)) extras.searchRepeat.num += 1;
-        else seenSearches.add(term);
+        const previous = recentSearches.get(term);
+        if (
+          previous !== undefined &&
+          searchOrder - previous <= SEARCH_REPEAT_WINDOW
+        ) {
+          extras.searchRepeat.num += 1;
+        }
+        recentSearches.set(term, searchOrder);
       }
     }
 

@@ -271,14 +271,21 @@ async function main(): Promise<void> {
     const w = buildStatWindow(target, closed, {
       rankByAbsoluteScore: flags.has("all"),
     });
+    process.stdout.write("\n  성장 가이드\n\n");
+    const allTime = flags.has("all");
     process.stdout.write(
-      `\n  성장 가이드 — 개인 최고까지의 격차가 큰 순서\n\n`,
+      allTime
+        ? "  (전수 집계라 병목을 고쳤을 때 닫히는 몫으로 정렬합니다)\n\n"
+        : "",
     );
-    for (const advice of adviseAll(w.stats)) {
+    for (const advice of adviseAll(w.stats, { allTime })) {
       const gap = advice.gapToBest;
-      if (gap === null || gap < 1) continue;
+      const gain = advice.bottleneckGain;
+      if (allTime ? (gain ?? 0) < 1 : gap === null || gap < 1) continue;
       process.stdout.write(
-        `  ${advice.label}  ${advice.score?.toFixed(0) ?? "—"} → 최고 ${advice.best?.toFixed(0) ?? "—"}  (+${gap.toFixed(0)} 여지)\n`,
+        allTime
+          ? `  ${advice.label}  ${advice.score?.toFixed(0) ?? "—"}  (병목 해소 시 +${gain?.toFixed(0) ?? "—"})\n`
+          : `  ${advice.label}  ${advice.score?.toFixed(0) ?? "—"} → 최고 ${advice.best?.toFixed(0) ?? "—"}  (+${gap?.toFixed(0) ?? "—"} 여지, 병목 해소 시 +${gain?.toFixed(0) ?? "—"})\n`,
       );
       const b = advice.bottleneck;
       const c = advice.criterion;

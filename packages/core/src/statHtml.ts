@@ -152,17 +152,21 @@ export function renderStatHtml(
 <div class="chart">${renderRadarSvg(window.stats, { grayedOut: gray })}</div>
 ${window.stats.map((stat) => renderStat(stat, gray)).join("\n")}
 ${gray ? "" : `<div class="guide">
-  <h2>성장 가이드 · 개인 최고까지의 격차 순</h2>
-  ${adviseAll(window.stats)
-    .filter((a) => (a.gapToBest ?? 0) >= 1)
+  <h2>성장 가이드${options.allTime === true ? " · 병목 해소 이득 순" : " · 개인 최고까지의 격차 순"}</h2>
+  ${adviseAll(window.stats, { allTime: options.allTime === true })
+    .filter((a) =>
+      options.allTime === true
+        ? (a.bottleneckGain ?? 0) >= 1
+        : (a.gapToBest ?? 0) >= 1,
+    )
     .slice(0, 3)
     .map((a) => {
       const c = a.criterion;
       return `<div class="adv">
       <div class="top">
         <span class="nm">${escapeHtml(a.label)}</span>
-        <span>${num(a.score)} → 최고 ${num(a.best)}</span>
-        <span class="gap">+${num(a.gapToBest)} 여지</span>
+        <span>${options.allTime === true ? num(a.score) : `${num(a.score)} → 최고 ${num(a.best)}`}</span>
+        <span class="gap">병목 해소 시 +${num(a.bottleneckGain)}</span>
         <span class="bn">병목 ${a.bottleneck === null ? "—" : escapeHtml(a.bottleneck.label)} ${
           a.bottleneck?.value == null ? "" : (a.bottleneck.value * 100).toFixed(0)
         }</span>
