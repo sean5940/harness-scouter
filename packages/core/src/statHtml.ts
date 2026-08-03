@@ -1,6 +1,6 @@
 import { adviseAll } from "./growth.js";
 import { renderRadarSvg, rankFill } from "./radar.js";
-import type { StatEntry, StatWindow } from "./stats.js";
+import type { StatEntry, StatWindow, TrendRow } from "./stats.js";
 
 function escapeHtml(text: string): string {
   return text
@@ -110,6 +110,23 @@ body{margin:0;padding:32px 20px 64px;background:var(--bg);color:var(--text);
 .adv li{margin:3px 0}
 .adv li.no{color:var(--d)}
 .adv li.no::marker{content:"× "}
+.trend table{width:100%;border-collapse:collapse;font-size:12.5px;
+  background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.trend th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--dim);font-weight:600;text-align:left;padding:9px 12px;
+  border-bottom:1px solid var(--line)}
+.trend td{padding:6px 12px;border-bottom:1px solid var(--line)}
+.trend tr:last-child td{border-bottom:none}
+.trend .n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.trend .dim{color:var(--dim)}
+.trend .statRow td{font-weight:700;background:color-mix(in srgb,var(--line) 30%,transparent)}
+.trend .compRow td{color:var(--fg)}
+.trend .thin td{opacity:.45}
+.trend .up{color:var(--now);font-weight:700}
+.trend .down{color:var(--d);font-weight:700}
+.trend .flat{color:var(--dim)}
+.trend .crit{font-size:11.5px;color:var(--dim);line-height:1.6;
+  padding-left:11px;border-left:2px solid var(--line)}
 
 .foot{color:var(--dim);font-size:11.5px;line-height:1.8;padding-top:16px;
   border-top:1px solid var(--line)}
@@ -172,9 +189,52 @@ function renderStat(stat: StatEntry, gray: boolean): string {
  *
  * Webview에 그대로 넣을 수 있도록 외부 리소스 없이 한 파일로 만든다 (설계 7절 CSP 제약).
  */
+/** 분모가 이보다 얇으면 차이를 표시하되 판단 근거로는 쓰지 않는다고 밝힌다. */
+const TREND_THIN_DENOMINATOR = 100;
+
+/**
+ * 초기 절반과 최근 절반의 비교.
+ *
+ * 정의를 고치면 점수가 움직이는데 그건 측정이 바뀐 것이지 행동이 바뀐 게 아니다.
+ * 같은 정의로 시기를 갈라야 그 둘이 분리된다.
+ */
+function renderTrend(rows: TrendRow[]): string {
+  if (rows.length === 0) return "";
+  const cell = (v: number | null) => (v === null ? "—" : v.toFixed(1));
+  const arrow = (d: number | null) => {
+    if (d === null) return "";
+    if (Math.abs(d) < 2) return "flat";
+    return d > 0 ? "up" : "down";
+  };
+  return `<div class="guide trend">
+  <h2>성장 · 같은 정의로 초기 절반 대 최근 절반</h2>
+  <table>
+    <thead><tr><th>항목</th><th>초기</th><th>최근</th><th>변화</th><th>분모</th></tr></thead>
+    <tbody>
+    ${rows
+      .map((r) => {
+        const thin =
+          r.parent !== null && r.denominator < TREND_THIN_DENOMINATOR;
+        return `<tr class="${r.parent === null ? "statRow" : "compRow"}${thin ? " thin" : ""}">
+        <td>${r.parent === null ? "" : "&nbsp;&nbsp;&nbsp;"}${escapeHtml(r.label)}</td>
+        <td class="n">${cell(r.early)}</td>
+        <td class="n">${cell(r.late)}</td>
+        <td class="n ${arrow(r.delta)}">${r.delta === null ? "—" : `${r.delta >= 0 ? "+" : ""}${r.delta.toFixed(1)}`}</td>
+        <td class="n dim">${r.denominator.toLocaleString()}</td>
+      </tr>`;
+      })
+      .join("")}
+    </tbody>
+  </table>
+  <div class="crit">정의를 바꾸면 점수가 움직이지만 그건 측정이 바뀐 것입니다.
+  같은 정의로 시기를 갈라야 행동 변화만 남습니다. 회색 줄은 분모가 ${TREND_THIN_DENOMINATOR}건 미만이라
+  차이를 판단 근거로 쓰지 않습니다.</div>
+</div>`;
+}
+
 export function renderStatHtml(
   window: StatWindow,
-  options: { allTime?: boolean } = {},
+  options: { allTime?: boolean; trend?: TrendRow[] } = {},
 ): string {
   const gray = !window.judgeable;
   const scope =
@@ -239,6 +299,7 @@ ${
 </div>`
 }
 ${gray ? '<div class="guide"><h2>성장 가이드</h2><div class="adv">계측 커버리지가 임계 아래라 이 구간의 값을 판정하지 않습니다. 커버리지가 회복된 구간에서 다시 보세요.</div></div>' : ""}
+${renderTrend(options.trend ?? [])}
 <div class="foot">
 굵은 육각형은 100점 경계, 파선은 개인 최고, 채운 면은 지금입니다.
 막대 안 옅은 띠는 통상 범위(p25~p75), 세로 눈금은 개인 최고입니다.<br>

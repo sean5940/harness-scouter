@@ -14,6 +14,7 @@ import {
   defaultLabelPath,
   buildStatWindow,
   mergePeriods,
+  compareHalves,
   adviseAll,
   renderStatHtml,
   runGate,
@@ -501,7 +502,10 @@ async function main(): Promise<void> {
             buildStatWindow(target, closedForHtml, {
               rankByAbsoluteScore: flags.has("all"),
             }),
-            { allTime: flags.has("all") },
+            {
+              allTime: flags.has("all"),
+              trend: compareHalves(closedForHtml),
+            },
           );
     if (out === "-") {
       // 확장이 파이프로 받아 Webview에 그대로 넣는다.

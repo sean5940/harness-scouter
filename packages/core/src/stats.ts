@@ -460,6 +460,74 @@ export function buildStatWindow(
  * 전수 집계는 구간 하나만 보는 것과 다른 질문에 답한다. 구간 하나는 "지금 어떤가",
  * 전수는 "평소 어떤가"다. 후자가 기준선이므로 개별 구간을 읽기 전에 먼저 봐야 한다.
  */
+export interface TrendRow {
+  label: string;
+  /** 구성요소면 소속 능력치 이름, 능력치 자신이면 null. */
+  parent: string | null;
+  /** 0~100 */
+  early: number | null;
+  late: number | null;
+  /** late - early. 둘 중 하나라도 없으면 null. */
+  delta: number | null;
+  /** 최근 절반의 분모. 얇으면 차이를 믿지 않는다. */
+  denominator: number;
+}
+
+/**
+ * 같은 정의로 초기 절반과 최근 절반을 비교한다.
+ *
+ * 정의를 고치면 점수가 움직이는데 그건 측정이 바뀐 것이지 행동이 바뀐 게 아니다.
+ * 시기를 갈라 같은 정의로 재면 정의가 상수로 고정되므로 남는 차이가 행동 차이다.
+ *
+ * 구간 간 예측력이 0 이라 이웃 구간 비교는 잡음이지만, 14구간씩 합친 두 덩어리
+ * 비교는 다른 질문이다. 그래도 분모가 얇은 구성요소의 차이는 믿지 않는다.
+ */
+export function compareHalves(periods: Period[]): TrendRow[] {
+  const closed = periods.filter((p) => !p.open);
+  const half = Math.floor(closed.length / 2);
+  if (half < 2) return [];
+  const early = mergePeriods(closed.slice(0, half));
+  const late = mergePeriods(closed.slice(half));
+  if (early === null || late === null) return [];
+
+  const byLabel = (period: Period): Map<string, StatValue> => {
+    const out = new Map<string, StatValue>();
+    for (const s of computeStats(period)) out.set(s.label, s);
+    return out;
+  };
+  const A = byLabel(early);
+  const B = byLabel(late);
+
+  const rows: TrendRow[] = [];
+  for (const [label, a] of A) {
+    const b = B.get(label);
+    if (b === undefined) continue;
+    rows.push({
+      label,
+      parent: null,
+      early: a.score,
+      late: b.score,
+      delta: a.score === null || b.score === null ? null : b.score - a.score,
+      denominator: b.components.reduce((n, c) => n + c.denominator, 0),
+    });
+    for (const c of a.components) {
+      const d = b.components.find((x) => x.label === c.label);
+      if (d === undefined) continue;
+      const from = c.value === null ? null : c.value * 100;
+      const to = d.value === null ? null : d.value * 100;
+      rows.push({
+        label: c.label,
+        parent: label,
+        early: from,
+        late: to,
+        delta: from === null || to === null ? null : to - from,
+        denominator: d.denominator,
+      });
+    }
+  }
+  return rows;
+}
+
 export function mergePeriods(periods: Period[]): Period | null {
   const closed = periods.filter((p) => !p.open);
   const first = closed[0];
