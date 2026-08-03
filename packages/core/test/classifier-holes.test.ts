@@ -86,3 +86,34 @@ describe("껍데기와 묶기로 판정이 사라지던 경로", () => {
     ]);
   });
 });
+
+describe("Glob 으로 대체할 수 없는 find 는 분모에서 뺀다", () => {
+  // 넣으면 대안이 없는 일을 할 때마다 점수가 깎여 정직한 경로가 막힌다.
+  // 검색 게이트 훅도 같은 둘을 예외로 뺀다.
+  it("디렉토리 찾기는 뺀다", () => {
+    expect(classifyBash("find app -type d -name lib").isFileFind).toBe(false);
+  });
+
+  it("개수·시각 집계는 뺀다", () => {
+    expect(classifyBash(`find app -name "*.ts" | wc -l`).isFileFind).toBe(
+      false,
+    );
+    expect(
+      classifyBash(`find app -name "*.ts" -newer package.json`).isFileFind,
+    ).toBe(false);
+  });
+
+  it("파일을 이름으로 찾는 것은 그대로 분모다", () => {
+    expect(classifyBash(`find app -name "*.ts"`).isFileFind).toBe(true);
+    expect(classifyBash(`find . -type f -name "*.test.ts"`).isFileFind).toBe(
+      true,
+    );
+  });
+
+  it("집계처럼 보여도 내용을 뒤지면 예외가 아니다", () => {
+    expect(
+      classifyBash(`find app -name "*.ts" -exec grep -l TODO {} + | wc -l`)
+        .isFileFind,
+    ).toBe(true);
+  });
+});

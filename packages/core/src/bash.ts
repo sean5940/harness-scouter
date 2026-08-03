@@ -341,11 +341,21 @@ function searchKindOfSegment(tokens: string[]): SearchKind {
     return recursive || targetsManyFiles(args) ? "content" : null;
   }
   if (bare === "find") {
-    return tokens
-      .slice(i + 1)
-      .some((t) => /^-i?name$/.test(t) || t === "-iregex" || t === "-regex")
-      ? "file"
-      : null;
+    const args = tokens.slice(i + 1);
+    const byName = args.some(
+      (t) => /^-i?name$/.test(t) || t === "-iregex" || t === "-regex",
+    );
+    if (!byName) return null;
+    // Glob 으로 대체할 수 없는 형태는 분모에 넣지 않는다. Glob 은 파일만 내고
+    // 개수·크기·시각도 못 센다. 넣으면 대안이 없는 일을 할 때마다 점수가 깎여
+    // 정직한 경로가 막힌다. 검색 게이트 훅도 같은 둘을 예외로 뺀다.
+    const directoryOnly = args.some(
+      (t, n) => t === "-type" && args[n + 1] === "d",
+    );
+    const aggregation = args.some(
+      (t) => t === "-size" || t === "-newer" || t === "-printf",
+    );
+    return directoryOnly || aggregation ? null : "file";
   }
   return null;
 }
@@ -595,6 +605,11 @@ export function classifyBash(
   const pipelineHasSourcePath = segments.some((s) =>
     s.split(/\s+/).some((t) => !t.startsWith("-") && isReadableSourcePath(t)),
   );
+  // 파일 목록의 개수·크기만 세는 파이프. `find … | wc -l` 은 세그먼트가 갈려
+  // find 쪽만 봐서는 안 보인다. 내용을 뒤지는 명령이 섞이면 집계가 아니다.
+  const pipelineCountsOnly =
+    segments.some((s) => /(^|\s)(wc|stat)(\s|$)/.test(s)) &&
+    !segments.some((s) => /(^|\s)(grep|rg|cat|sed|awk)(\s|$)/.test(s));
 
   // 종류가 아니라 실행 횟수를 센다. Set 이면 `npx tsc && npx tsc && npx tsc` 가
   // [tsc] 하나로 접혀 공회전이 안 보인다. 한 호출로 묶는 것이 조작 경로였다.
@@ -641,11 +656,14 @@ export function classifyBash(
     }
   }
 
+  // 개수만 세는 파이프는 Glob 으로 대체할 수 없어 분모에서 뺀다.
+  const globReplaceableFind = isFileFind && !pipelineCountsOnly;
+
   return {
     isFormatter,
     verifierKinds: [...verifierKinds],
-    isRecursiveSearch: isFileFind || isContentSearch,
-    isFileFind,
+    isRecursiveSearch: globReplaceableFind || isContentSearch,
+    isFileFind: globReplaceableFind,
     isContentSearch,
     isIndexedSearch,
     isSourceRead,
