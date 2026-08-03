@@ -50,7 +50,7 @@ const USAGE = `harness-scouter
   scouter harness [--root <path>]               하네스 구조(센서·가이드)를 스캔한다
   scouter gate [--db <path>]                    M0.5 재현성 게이트를 돌린다
   scouter json [--db <path>]                    확장이 읽을 JSON을 낸다
-  scouter html [--db <path>] [--out <path>] [--all] [--diag]
+  scouter html [--db <path>] [--out <path>] [--all] [--diag] [--root <path>]
                                                 스테이터스 창을 HTML로 낸다 (--diag 면 누수 진단)
 `;
 
@@ -71,6 +71,25 @@ function parseArgs(argv: string[]): {
     if (next !== undefined && !next.startsWith("--")) i += 1;
   }
   return { command, flags };
+}
+
+/** 스탯 창에 함께 실을 하네스 구조 요약. 저장소를 못 읽으면 생략한다. */
+function harnessViewOf(root: string) {
+  try {
+    const inventory = scanHarness(root, [
+      join(homedir(), ".claude", "settings.json"),
+    ]);
+    if (inventory.sensors.length === 0) return undefined;
+    return {
+      sensorCount: inventory.sensors.length,
+      autoCount: inventory.sensors.filter((s) => s.kind !== "skill").length,
+      guideCount: inventory.guides.length,
+      coverage: summarizeHarness(inventory),
+      coherence: checkCoherence(inventory, ruleDocumentPaths(root)),
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 function openDb(flags: Map<string, string>): ScouterDb {
@@ -569,6 +588,7 @@ async function main(): Promise<void> {
             {
               allTime: flags.has("all"),
               trend: compareHalves(closedForHtml),
+              harness: harnessViewOf(flags.get("root") ?? process.cwd()),
             },
           );
     if (out === "-") {

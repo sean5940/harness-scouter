@@ -6,6 +6,21 @@ import {
 } from "./growth.js";
 import { renderRadarSvg, rankFill } from "./radar.js";
 import type { StatEntry, StatWindow, TrendRow } from "./stats.js";
+import {
+  STAGE_LABELS,
+  type HarnessCoverage,
+  type CoherenceReport,
+  type LifecycleStage,
+} from "./harness.js";
+
+/** 스탯 창이 함께 보여줄 하네스 구조 요약. */
+export interface HarnessView {
+  sensorCount: number;
+  autoCount: number;
+  guideCount: number;
+  coverage: HarnessCoverage;
+  coherence: CoherenceReport;
+}
 
 function escapeHtml(text: string): string {
   return text
@@ -149,6 +164,17 @@ body{margin:0;padding:32px 20px 64px;background:var(--bg);color:var(--text);
 .rubric .clean{font-size:10.5px;color:var(--now);font-weight:600}
 .rubric .crit{font-size:11.5px;color:var(--dim);line-height:1.65;
   padding-left:11px;border-left:2px solid var(--line)}
+.harness .hbox{background:var(--panel);border:1px solid var(--line);border-radius:6px;
+  padding:14px 16px;display:flex;flex-direction:column;gap:9px}
+.harness .hrow{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.harness .lbl{flex:0 0 44px;font-size:11px;letter-spacing:.1em;color:var(--dim);
+  text-transform:uppercase;font-weight:600}
+.harness .cell{font-size:11.5px;color:var(--dim);background:var(--bg);
+  border:1px solid var(--line);border-radius:3px;padding:3px 9px;white-space:nowrap}
+.harness .cell b{color:var(--text);font-size:13px;font-weight:700;
+  font-variant-numeric:tabular-nums;margin-right:5px}
+.harness .crit{font-size:11.5px;color:var(--dim);line-height:1.65;
+  padding-left:11px;border-left:2px solid var(--line)}
 
 .foot{color:var(--dim);font-size:11.5px;line-height:1.8;padding-top:16px;
   border-top:1px solid var(--line)}
@@ -261,6 +287,47 @@ function renderRubric(stats: StatEntry[]): string {
 </div>`;
 }
 
+/**
+ * 하네스 구조. 행동 지표만으로는 못 하는 것을 여기서 한다.
+ *
+ * "차단 0건"이 센서가 좋아서인지 없어서인지는 이 목록을 봐야 갈린다.
+ * 축 이름은 Martin Fowler 의 harness engineering 에서 가져왔다.
+ */
+function renderHarness(view: HarnessView | undefined): string {
+  if (view === undefined) return "";
+  const { coverage, coherence, sensorCount, guideCount, autoCount } = view;
+  const stage = (Object.keys(coverage.byStage) as LifecycleStage[])
+    .map(
+      (k) =>
+        `<span class="cell"><b>${coverage.byStage[k]}</b>${escapeHtml(STAGE_LABELS[k])}</span>`,
+    )
+    .join("");
+  return `<div class="guide harness">
+  <h2>하네스 구조 · 행동이 아니라 하네스 자체</h2>
+  <div class="hbox">
+    <div class="hrow"><span class="lbl">센서</span>
+      <span class="cell"><b>${sensorCount}</b>전체</span>
+      <span class="cell"><b>${autoCount}</b>자동 발동</span>
+      <span class="cell"><b>${sensorCount - autoCount}</b>수동 호출</span>
+      <span class="cell"><b>${guideCount}</b>가이드</span></div>
+    <div class="hrow"><span class="lbl">방향</span>
+      <span class="cell"><b>${coverage.byDirection.feedforward}</b>행동 전 조종</span>
+      <span class="cell"><b>${coverage.byDirection.feedback}</b>행동 후 관찰</span></div>
+    <div class="hrow"><span class="lbl">실행</span>
+      <span class="cell"><b>${coverage.byExecution.computational}</b>결정론적</span>
+      <span class="cell"><b>${coverage.byExecution.inferential}</b>의미론적</span></div>
+    <div class="hrow"><span class="lbl">단계</span>${stage}</div>
+  </div>
+  <div class="crit">규칙 문서 ${coherence.documentsChecked}개에서 훅 ${coherence.sensorsChecked}종을 확인했습니다.
+  ${
+    coherence.undocumentedSensors.length === 0
+      ? "전부 문서에 이름이 나옵니다."
+      : `설명 없이 막는 게이트 ${coherence.undocumentedSensors.length}종: ${coherence.undocumentedSensors.map((s) => escapeHtml(s)).join(" · ")}`
+  }
+  검사 범위가 결론을 크게 바꿉니다. 같은 저장소에서 규칙 문서만 보면 미기재가 21종, 스킬까지 넣으면 4종이었습니다.</div>
+</div>`;
+}
+
 /** 분모가 이보다 얇으면 차이를 표시하되 판단 근거로는 쓰지 않는다고 밝힌다. */
 const TREND_THIN_DENOMINATOR = 100;
 
@@ -306,7 +373,11 @@ function renderTrend(rows: TrendRow[]): string {
 
 export function renderStatHtml(
   window: StatWindow,
-  options: { allTime?: boolean; trend?: TrendRow[] } = {},
+  options: {
+    allTime?: boolean;
+    trend?: TrendRow[];
+    harness?: HarnessView;
+  } = {},
 ): string {
   const gray = !window.judgeable;
   const scope =
@@ -372,6 +443,7 @@ ${
 </div>`
 }
 ${gray ? '<div class="guide"><h2>성장 가이드</h2><div class="adv">계측 커버리지가 임계 아래라 이 구간의 값을 판정하지 않습니다. 커버리지가 회복된 구간에서 다시 보세요.</div></div>' : ""}
+${renderHarness(options.harness)}
 ${renderTrend(options.trend ?? [])}
 <div class="foot">
 굵은 육각형은 100점 경계, 파선은 개인 최고, 채운 면은 지금입니다.
