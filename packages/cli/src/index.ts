@@ -21,6 +21,8 @@ import {
   OBJECTIVE_LABELS,
   CONTAMINATION_LABELS,
   scanHarness,
+  fetchPrOutcomes,
+  signalSpreads,
   checkCoherence,
   ruleDocumentPaths,
   summarizeHarness,
@@ -48,6 +50,7 @@ const USAGE = `harness-scouter
   scouter label <세션id> good|bad [--note <s>]   세션에 라벨을 붙인다
   scouter labels [--labels <path>]              붙인 라벨을 본다 (기본 ~/.harness-scouter/labels.jsonl)
   scouter harness [--root <path>]               하네스 구조(센서·가이드)를 스캔한다
+  scouter outcomes [--root <path>]              PR 결과를 모아 신호 변별력을 본다
   scouter gate [--db <path>]                    M0.5 재현성 게이트를 돌린다
   scouter json [--db <path>]                    확장이 읽을 JSON을 낸다
   scouter html [--db <path>] [--out <path>] [--all] [--diag] [--root <path>]
@@ -449,6 +452,44 @@ async function main(): Promise<void> {
       "\n  축 이름은 Martin Fowler 의 harness engineering 에서 가져왔습니다.\n" +
         "  센서 수는 행동 지표의 분모입니다. 차단 0건이 센서가 좋아서인지 없어서인지는\n" +
         "  이 목록을 봐야 갈립니다.\n",
+    );
+    return;
+  }
+
+  if (command === "outcomes") {
+    const root = flags.get("root") ?? process.cwd();
+    process.stderr.write("PR 목록을 가져오는 중입니다. 시간이 걸립니다.\n");
+    let outcomes;
+    try {
+      outcomes = fetchPrOutcomes(root, 800);
+    } catch {
+      process.stdout.write(
+        "PR 을 가져오지 못했습니다. gh 인증과 저장소를 확인하세요.\n",
+      );
+      return;
+    }
+    const list = [...outcomes.values()];
+    const db = openDb(flags);
+    const linked = new Set(
+      db
+        .prOutcomeRefs()
+        .map((r) => Number(r))
+        .filter((n) => Number.isFinite(n)),
+    );
+    db.close();
+    const mine = list.filter((o) => linked.has(o.number));
+    process.stdout.write(
+      `\n  PR 결과  ${root}\n\n  저장소 ${list.length}건 · 세션에 연결된 것 ${mine.length}건\n\n`,
+    );
+    process.stdout.write("  신호          갈래  최빈값 비중   요약\n");
+    for (const s of signalSpreads(mine.length > 0 ? mine : list)) {
+      process.stdout.write(
+        `  ${s.name.padEnd(12)} ${String(s.distinct).padStart(4)}  ${(s.topShare * 100).toFixed(0).padStart(8)}%   ${s.summary}\n`,
+      );
+    }
+    process.stdout.write(
+      "\n  최빈값 비중이 1 에 가까우면 사실상 상수라 상관을 볼 수 없습니다.\n" +
+        "  변별력 없는 신호로 상관이 안 나온 것을 지표가 틀렸다고 읽으면 안 됩니다.\n",
     );
     return;
   }

@@ -11,6 +11,8 @@ export * from "./radar.js";
 export * from "./diagnose.js";
 export * from "./labels.js";
 export * from "./harness.js";
+export * from "./outcomes.js";
+export * from "./validity.js";
 export * from "./bash.js";
 export * from "./gate.js";
 export * from "./reportHtml.js";

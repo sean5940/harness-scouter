@@ -354,6 +354,15 @@ export class ScouterDb {
     return out;
   }
 
+  /** 세션에 연결된 PR 번호. 타당성 검증의 표본이 된다. */
+  prOutcomeRefs(): string[] {
+    return (
+      this.db
+        .prepare("SELECT DISTINCT ref FROM artifact WHERE kind = 'pr'")
+        .all() as unknown as Array<{ ref: string }>
+    ).map((r) => r.ref);
+  }
+
   /** 앞자리만으로 세션을 찾는다. 진단 출력이 8자만 보여주기 때문이다. */
   resolveSessionId(prefix: string): string | null {
     const rows = this.db

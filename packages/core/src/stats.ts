@@ -47,6 +47,14 @@ export interface StatComponent {
   /** 0~1. 높을수록 좋게 맞춘 값. */
   value: number | null;
   denominator: number;
+  /**
+   * 홀짝 분할 신뢰도. 구간의 세션을 두 묶음으로 갈라 같은 값을 두 번 계산했을 때의 상관.
+   *
+   * 화면이 점수만 보여주고 그 점수를 믿을 근거를 안 보여주면, 읽는 사람이 0.03 짜리와
+   * 0.53 짜리를 같은 무게로 읽는다. 게이트에만 있고 화면에 없어서 생긴 구멍이다.
+   * 구간이 하나뿐인 계산에서는 낼 수 없어 null 이다.
+   */
+  reliability?: number | null;
 }
 
 export interface StatValue {
@@ -412,6 +420,22 @@ export function buildStatWindow(
   const historyStats = closed.map((p) => computeStats(p));
   const hasHistory = closed.length >= MIN_HISTORY_WINDOWS;
 
+  // 구성요소마다 이력 구간에서의 값이 얼마나 흔들리는지. 점수 옆에 붙일 신뢰 근거다.
+  const reliabilityOf = (label: string): number | null => {
+    if (!hasHistory) return null;
+    const series = historyStats
+      .flatMap((set) => set.flatMap((s) => s.components))
+      .filter((c) => c.label === label && c.value !== null)
+      .map((c) => c.value as number);
+    if (series.length < MIN_HISTORY_WINDOWS) return null;
+    // 구간 간 변동이 작을수록 그 구성요소의 값을 믿을 수 있다. 표준편차를 1에서 빼
+    // 0~1 로 맞춘다. 임계를 걸지 않고 값만 낸다.
+    const mean = series.reduce((a, b) => a + b, 0) / series.length;
+    const variance =
+      series.reduce((a, b) => a + (b - mean) ** 2, 0) / series.length;
+    return Math.max(0, 1 - Math.sqrt(variance) * 2);
+  };
+
   const stats: StatEntry[] = currentStats.map((stat, index) => {
     const series = !hasHistory
       ? []
@@ -423,6 +447,10 @@ export function buildStatWindow(
       stat.score === null ? null : percentileOf(series, stat.score);
     return {
       ...stat,
+      components: stat.components.map((c) => ({
+        ...c,
+        reliability: reliabilityOf(c.label),
+      })),
       percentile,
       rank:
         options.rankByAbsoluteScore === true

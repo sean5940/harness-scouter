@@ -5,6 +5,7 @@ import {
   CONTAMINATION_LABELS,
 } from "./growth.js";
 import { renderRadarSvg, rankFill } from "./radar.js";
+import { validityState } from "./validity.js";
 import type { StatEntry, StatWindow, TrendRow } from "./stats.js";
 import {
   STAGE_LABELS,
@@ -115,6 +116,7 @@ body{margin:0;padding:32px 20px 64px;background:var(--bg);color:var(--text);
   padding:3px 8px;white-space:nowrap;border:1px solid var(--line)}
 .part b{color:var(--text);font-weight:600}
 .part .n{opacity:.65;margin-left:2px}
+.part .rel{margin-left:5px;padding-left:5px;border-left:1px solid var(--line);opacity:.8}
 
 .guide{display:flex;flex-direction:column;gap:10px}
 .guide h2{font-size:11px;letter-spacing:.18em;color:var(--dim);margin:0;
@@ -208,7 +210,11 @@ function renderStat(stat: StatEntry, gray: boolean): string {
       (c) =>
         `<span class="part">${escapeHtml(c.label)} <b class="num">${
           c.value === null ? "—" : (c.value * 100).toFixed(0)
-        }</b><span class="n num">n=${c.denominator.toLocaleString()}</span></span>`,
+        }</b><span class="n num">n=${c.denominator.toLocaleString()}</span>${
+          c.reliability == null
+            ? ""
+            : `<span class="rel num" title="구간 간 안정성. 이력에서 이 값이 얼마나 덜 흔들렸나">±${(c.reliability * 100).toFixed(0)}</span>`
+        }</span>`,
     )
     .join("");
 
@@ -448,7 +454,8 @@ ${renderTrend(options.trend ?? [])}
 <div class="foot">
 굵은 육각형은 100점 경계, 파선은 개인 최고, 채운 면은 지금입니다.
 막대 안 옅은 띠는 통상 범위(p25~p75), 세로 눈금은 개인 최고입니다.<br>
-${rankBasis} 직전 구간 대비 변화는 표시하지 않습니다. 구간 간 상관이 0 근처라 잡음이기 때문입니다.
+${rankBasis} 직전 구간 대비 변화는 표시하지 않습니다. 구간 간 상관이 0 근처라 잡음이기 때문입니다.<br>
+${escapeHtml(validityState().caveat)}
 </div>
 </div></body></html>`;
 }
