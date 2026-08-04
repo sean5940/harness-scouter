@@ -209,7 +209,7 @@ function renderStat(stat: StatEntry, gray: boolean, lang: Lang): string {
   const parts = stat.components
     .map(
       (c) =>
-        `<span class="part">${escapeHtml(t(c.label, lang))} <b class="num">${
+        `<span class="part${c.displayOnly === true ? " displayOnly" : ""}">${escapeHtml(t(c.label, lang))}${c.displayOnly === true ? ` <span class="tag">${escapeHtml(t(L("표시", "display"), lang))}</span>` : ""} <b class="num">${
           c.value === null ? "—" : (c.value * 100).toFixed(0)
         }</b><span class="n num">n=${c.denominator.toLocaleString()}</span>${
           c.reliability == null

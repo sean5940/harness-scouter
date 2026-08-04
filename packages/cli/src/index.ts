@@ -485,8 +485,12 @@ async function main(): Promise<void> {
       for (const c of stat.components) {
         const v =
           c.value === null ? "  —" : (c.value * 100).toFixed(0).padStart(3);
+        // 점수에 안 들어가는 구성요소는 그렇다고 적는다. 안 적으면 읽는 사람이 스탯을
+        // 구성요소 전부의 평균으로 읽어 왜 그 숫자가 나왔는지 못 맞춘다.
+        const note =
+          c.displayOnly === true ? `  ${say(lang, "(표시)", "(display)")}` : "";
         process.stdout.write(
-          `      ${padEndW(t(c.label, lang), COLUMNS[lang].componentLabel)} ${v}   n=${String(c.denominator).padStart(5)}\n`,
+          `      ${padEndW(t(c.label, lang), COLUMNS[lang].componentLabel)} ${v}   n=${String(c.denominator).padStart(5)}${note}\n`,
         );
       }
     }
