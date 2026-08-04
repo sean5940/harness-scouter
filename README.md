@@ -82,16 +82,85 @@ npm run scouter -- scan     # 890MB 전체 재파싱, 8초
 
 ## 설치
 
-Node 22.5 이상이 필요합니다. `node:sqlite` 내장 모듈을 쓰기 때문에 네이티브 의존성이 없습니다.
+### 단일 실행파일 (Node 없이)
+
+태그마다 릴리스에 붙습니다. 런타임이 들어 있어 아무것도 미리 깔 필요가 없습니다.
 
 ```bash
-git clone <이 저장소>
+# darwin-arm64 · darwin-x64 · linux-x64
+curl -fsSL https://github.com/sean5940/harness-scouter/releases/latest/download/scouter-darwin-arm64.tar.gz | tar xz
+./scouter status --all
+```
+
+Node 런타임을 통째로 담아 **105MB 안팎**입니다. macOS는 ad-hoc 서명이라 처음 열 때 우클릭 열기가 필요합니다.
+
+### 소스에서
+
+Node 22.5 이상이 필요합니다. `node:sqlite` 내장 모듈을 쓰기 때문에 **네이티브 의존성이 없습니다.**
+
+```bash
+git clone https://github.com/sean5940/harness-scouter.git
 cd harness-scouter
 npm install
 npm run build
+npm run scouter -- status --all
 ```
 
 `gh` CLI는 PR 결과를 볼 때만 필요합니다(`scouter outcomes`). 없어도 나머지는 다 돕니다.
+
+## 언어
+
+화면은 **한국어와 영어**를 냅니다. 문서는 세 언어이고 맨 위 전환 줄에서 고를 수 있습니다.
+
+```bash
+scouter status --all                 # 자동 감지
+scouter status --all --lang en       # 영어
+scouter status --all --lang ko       # 한국어
+SCOUTER_LANG=en scouter status --all # 환경변수로 고정
+```
+
+자동 감지는 **명시값 → `SCOUTER_LANG` → `LC_ALL`/`LC_MESSAGES`/`LANG` → 영어** 순입니다. 로케일은 앞 두 글자만 보므로 `ko_KR.UTF-8`이면 한국어입니다.
+
+모르는 언어를 주면 조용히 넘어가지 않고 지원 목록과 함께 실패합니다.
+
+```
+$ scouter status --lang klingon
+알 수 없는 언어: klingon (지원: ko, en) / unknown language
+```
+
+**언어를 바꿔도 점수는 같습니다.** 다국어화가 정의를 안 건드렸다는 뜻이고, 릴리스마다 두 언어의 점수를 대조해 확인합니다.
+
+## 다른 하네스에 쓰기
+
+지표는 도구 이름이 아니라 **능력**으로 정의돼 있습니다. 다른 하네스를 재려면 이름에서 능력으로 가는 매핑 하나만 채우면 됩니다.
+
+| 능력 | Claude Code | 무엇을 재는가 |
+|---|---|---|
+| `file-find` | `Glob` | 파일 경로 찾기 |
+| `content-search` | `Grep` | 내용 전수 스캔 |
+| `index-search` | qmd · graphify (도구·**셸 CLI 모두**) | 인덱스 기반 검색 |
+| `index-fetch` | `qmd get` 계열 | 이미 아는 문서 꺼내기 |
+| `file-read` | `Read` | 파일 읽기 |
+| `file-edit` | `Edit` · `Write` · `MultiEdit` | 파일 고치기 |
+| `shell` | `Bash` | 셸 실행 |
+| `subagent` | `Agent` · `Task` | 위임 |
+| `other` | `TodoWrite` · `AskUserQuestion` 등 | 축이 보지 않음. **모르는 것과 구별하려고 명시** |
+
+**셸 칸이 핵심입니다.** 도구로 부르든 셸로 부르든 같은 일을 한 것인데, 셸을 안 보면 실사용량을 통째로 놓칩니다. 이 저장소에서 graphify CLI 호출 1,220건을 4건으로 본 적이 있습니다. 실사용량의 300분의 1입니다.
+
+### 모르는 것에는 소리가 납니다
+
+매핑표는 언제든 낡습니다. 그래서 프로필이 관측을 얼마나 덮는지 함께 잽니다.
+
+```
+관측 도구 호출 57,756건
+  능력에 매핑됨  57,749  100.0%
+  미매핑              7    0.0%
+```
+
+**커버리지가 90% 아래로 떨어지면 점수를 내지 않고 무엇이 안 잡혔는지를 보여줍니다.** 남의 하네스에서 0점이 나오는 게 아니라 "`read_file`을 모릅니다"가 나옵니다.
+
+graphify 사고의 본질은 이름을 틀린 것이 아니라 **틀린 줄 몰랐다**는 것이었습니다. 화면은 아무 말도 하지 않았습니다.
 
 ## 사용
 

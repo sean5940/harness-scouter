@@ -82,16 +82,85 @@ The incremental scan remembers each file's mtime and byte position and reads onl
 
 ## Install
 
-Node 22.5 or later is required. Because it uses the built-in `node:sqlite` module, there are no native dependencies.
+### Single binary (no Node)
+
+Attached to the release on every tag. The runtime is bundled, so nothing has to be installed first.
 
 ```bash
-git clone <this repo>
+# darwin-arm64 · darwin-x64 · linux-x64
+curl -fsSL https://github.com/sean5940/harness-scouter/releases/latest/download/scouter-darwin-arm64.tar.gz | tar xz
+./scouter status --all
+```
+
+It carries a whole Node runtime, so it is **around 105MB**. On macOS the signature is ad-hoc, so the first open needs right-click open.
+
+### From source
+
+Node 22.5 or later is required. Because it uses the built-in `node:sqlite` module, **there are no native dependencies.**
+
+```bash
+git clone https://github.com/sean5940/harness-scouter.git
 cd harness-scouter
 npm install
 npm run build
+npm run scouter -- status --all
 ```
 
 The `gh` CLI is only needed to see PR outcomes (`scouter outcomes`). Everything else works without it.
+
+## Language
+
+The screen comes in **Korean and English**. The documents are in three languages, picked from the switcher at the top.
+
+```bash
+scouter status --all                 # auto-detect
+scouter status --all --lang en       # English
+scouter status --all --lang ko       # Korean
+SCOUTER_LANG=en scouter status --all # pin it through the environment
+```
+
+Auto-detection goes **explicit value → `SCOUTER_LANG` → `LC_ALL`/`LC_MESSAGES`/`LANG` → English**. Only the first two letters of the locale are read, so `ko_KR.UTF-8` means Korean.
+
+An unknown language does not pass quietly. It fails, with the list of supported ones.
+
+```
+$ scouter status --lang klingon
+알 수 없는 언어: klingon (지원: ko, en) / unknown language
+```
+
+**The scores are the same in either language.** That means localization did not touch the definitions, and every release checks it by comparing the scores across the two languages.
+
+## Using it on another harness
+
+The metrics are defined by **capability**, not by tool name. Measuring another harness only takes filling in one mapping from names to capabilities.
+
+| Capability | Claude Code | What it measures |
+|---|---|---|
+| `file-find` | `Glob` | Finding file paths |
+| `content-search` | `Grep` | Full scan of content |
+| `index-search` | qmd · graphify (**both tool and shell CLI**) | Index-based search |
+| `index-fetch` | the `qmd get` family | Pulling out a document already known |
+| `file-read` | `Read` | Reading files |
+| `file-edit` | `Edit` · `Write` · `MultiEdit` | Editing files |
+| `shell` | `Bash` | Running a shell |
+| `subagent` | `Agent` · `Task` | Delegation |
+| `other` | `TodoWrite`, `AskUserQuestion`, and so on | Not seen by the axes. **Listed explicitly to keep it apart from the unknown** |
+
+**The shell column is the crux.** Calling through a tool and calling through the shell do the same work, and not looking at the shell loses the whole of actual usage. In this repository 1,220 graphify CLI calls were once seen as 4. 1/300 of actual use.
+
+### Unknowns make noise
+
+A mapping table goes stale sooner or later. So it also measures how much of what is observed the profile covers.
+
+```
+57,756 tool calls observed
+  mapped to a capability  57,749  100.0%
+  unmapped                     7    0.0%
+```
+
+**When coverage drops under 90% it does not give a score, it shows what was not caught.** Someone else's harness does not come out at 0, it comes out as "`read_file` is unknown".
+
+The heart of the graphify accident was not that a name was wrong but that **there was no way to know it was wrong**. The screen said nothing.
 
 ## Usage
 
