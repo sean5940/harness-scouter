@@ -31,6 +31,8 @@ interface ToolUseBlock {
   input?: Record<string, unknown>;
   tool_use_id?: string;
   is_error?: boolean;
+  /** subagent 트랜스크립트는 도구 출력을 이 필드에 바로 담는다. */
+  content?: unknown;
 }
 
 /**
@@ -283,7 +285,7 @@ export function extractFacts(
         entry.toolUseResult,
       );
       toolResults.push(result);
-      const tail = extractStdoutTail(entry.toolUseResult);
+      const tail = extractStdoutTail(entry.toolUseResult, block.content);
       if (tail !== null) {
         stdoutTails.set(id, tail);
         // 커밋 해시는 도구 결과에만 있다. 호출 시점의 산출물 ref 는 중복제거용
@@ -380,11 +382,43 @@ function extractToolResult(
   return row;
 }
 
-function extractStdoutTail(raw: unknown): string | null {
-  if (raw === null || typeof raw !== "object") return null;
-  const stdout = (raw as Record<string, unknown>)["stdout"];
-  if (typeof stdout !== "string" || stdout.length === 0) return null;
-  return stdout.length > STDOUT_TAIL_CHARS
-    ? stdout.slice(-STDOUT_TAIL_CHARS)
-    : stdout;
+function tail(text: string): string | null {
+  if (text.length === 0) return null;
+  return text.length > STDOUT_TAIL_CHARS
+    ? text.slice(-STDOUT_TAIL_CHARS)
+    : text;
+}
+
+/**
+ * 도구 출력의 꼬리. 두 자리를 다 봐야 한다.
+ *
+ * 메인 트랜스크립트는 `toolUseResult.stdout` 에 담고, subagent 트랜스크립트는
+ * `tool_result` 블록의 `content` 문자열에 바로 담는다. 앞쪽만 보고 있어서
+ * subagent 의 Bash 출력 13,245건이 통째로 안 잡혔다(수집률 0%). graphify 호출의
+ * 83%가 subagent 라 그쪽 적중률을 아예 못 재는 상태였다.
+ */
+function extractStdoutTail(
+  raw: unknown,
+  blockContent?: unknown,
+): string | null {
+  if (raw !== null && typeof raw === "object") {
+    const stdout = (raw as Record<string, unknown>)["stdout"];
+    if (typeof stdout === "string") {
+      const t = tail(stdout);
+      if (t !== null) return t;
+    }
+  }
+  if (typeof blockContent === "string") return tail(blockContent);
+  if (Array.isArray(blockContent)) {
+    const text = blockContent
+      .filter(
+        (b): b is { type?: string; text?: string } =>
+          b !== null && typeof b === "object",
+      )
+      .map((b) => (typeof b.text === "string" ? b.text : ""))
+      .join("\n")
+      .trim();
+    return tail(text);
+  }
+  return null;
 }
