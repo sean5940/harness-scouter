@@ -100,13 +100,28 @@ The incremental scan remembers each file's mtime and byte position and reads onl
 
 Attached to the release on every tag. The runtime is bundled, so nothing has to be installed first.
 
+| Platform              | File                          |
+| --------------------- | ----------------------------- |
+| macOS (Apple Silicon) | `scouter-darwin-arm64.tar.gz` |
+| macOS (Intel)         | `scouter-darwin-x64.tar.gz`   |
+| Linux (x86_64)        | `scouter-linux-x64.tar.gz`    |
+
+**This repository is private.** An anonymous `curl` cannot fetch it, so it is downloaded authenticated with `gh`.
+
 ```bash
-# darwin-arm64 · darwin-x64 · linux-x64
-curl -fsSL https://github.com/sean5940/harness-scouter/releases/latest/download/scouter-darwin-arm64.tar.gz | tar xz
+case "$(uname -sm)" in
+  "Darwin arm64")  T=darwin-arm64 ;;
+  "Darwin x86_64") T=darwin-x64 ;;
+  "Linux x86_64")  T=linux-x64 ;;
+esac
+gh release download --repo sean5940/harness-scouter \
+  --pattern "scouter-$T.tar.gz" --pattern SHA256SUMS
+tar xzf "scouter-$T.tar.gz"
+shasum -a 256 -c SHA256SUMS 2>/dev/null | grep OK
 ./scouter status --all
 ```
 
-It carries a whole Node runtime, so it is **around 105MB**. On macOS the signature is ad-hoc, so the first open needs right-click open.
+It carries a whole Node runtime, so it is **around 105MB** (35MB compressed). On macOS the signature is ad-hoc, so the first open needs right-click open.
 
 ### From source
 
@@ -161,6 +176,31 @@ The metrics are defined by **capability**, not by tool name. Measuring another h
 | `other`          | `TodoWrite`, `AskUserQuestion`, and so on    | Not seen by the axes. **Listed explicitly to keep it apart from the unknown** |
 
 **The shell column is the crux.** Calling through a tool and calling through the shell do the same work, and not looking at the shell loses the whole of actual usage. In this repository 1,220 graphify CLI calls were once seen as 4. 1/300 of actual use.
+
+### A missing capability is not a 0, it is no verdict
+
+Matching names is not enough. Measure a harness that has **no index search tool at all** and the numerator is 0 while the denominator fills up with `grep`, which comes out as a 0 — but that is not "had it and did not use it", it is "does not have it".
+
+```
+harness with no index tool  Content index first       no verdict   ← not a 0
+                            Read range discipline     measured
+shell-only harness          Instrumented channel use  no verdict
+                            Read range discipline     no verdict
+```
+
+**It comes out as no verdict even when the denominator is not 0.** The denominator gets filled by the fallback path, so the denominator alone cannot show a missing capability.
+
+Which capabilities an axis needs to hold is in `AXIS_REQUIRES`. If the profile does not have them, that axis drops out of the average, and **how many components the score came from is shown along with it.**
+
+```
+Exploration  100
+    File-finding discipline  no verdict
+    Content index first      100
+    Read before edit         no verdict
+    scored from 1 of 3 components
+```
+
+A session that fixed nothing and only repeated index searches really does come out like this. Instead of forcing the score down, it states **what the score was made of.**
 
 ### Unknowns make noise
 
@@ -320,7 +360,7 @@ Each component comes with the type of its target and how comparable it is.
 
 **If a component carries even one contamination flag, it is not used to compare people.** Right now **all 14** components carry one. This tool cannot yet be used to compare against anyone else.
 
-The most common flag is `tied to tool names`. The capability layer solved the name mapping, but a harness that **lacks the capability itself** still scores 0. A 0 from having no index tool is indistinguishable from a 0 from having one and not using it.
+The most common flag is `tied to tool names`. The capability layer resolves the name mapping and splits a missing capability out as no verdict, but that does not make the contamination go away. The anchor values (1,000/4,500 tokens, 100K/400K context) are fitted to the distribution of this corpus, so there is no basis for measuring another harness on the same scale.
 
 ### Per-component definitions
 
