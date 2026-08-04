@@ -1,5 +1,5 @@
 import type { StatEntry } from "./stats.js";
-import { t, type Lang } from "./i18n.js";
+import { L, t, type Lang } from "./i18n.js";
 
 export interface RadarOptions {
   size?: number;
@@ -94,7 +94,7 @@ export function renderRadarSvg(
 
   const parts: string[] = [];
   parts.push(
-    `<svg viewBox="0 0 ${size} ${size}" width="100%" role="img" aria-label="하네스 능력치 레이더">`,
+    `<svg viewBox="0 0 ${size} ${size}" width="100%" role="img" aria-label="${escapeHtml(t(L("하네스 능력치 레이더", "Harness stat radar"), lang))}">`,
   );
 
   for (let ring = rings; ring >= 1; ring -= 1) {

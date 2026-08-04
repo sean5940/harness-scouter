@@ -1,3 +1,5 @@
+import { L, type Localized } from "./i18n.js";
+
 /**
  * 타당성 검증의 현재 상태.
  *
@@ -46,7 +48,7 @@ export interface ValidityState {
   /** 외부 준거로 검증됐는가. 지금은 항상 거짓이다. */
   externallyValidated: boolean;
   /** 화면에 함께 적을 한 문장. */
-  caveat: string;
+  caveat: Localized;
 }
 
 /**
@@ -59,7 +61,9 @@ export interface ValidityState {
 export function validityState(): ValidityState {
   return {
     externallyValidated: false,
-    caveat:
+    caveat: L(
       "이 등급은 내 이력 대비 위치입니다. 실제 품질과 상관있다는 외부 근거는 아직 없습니다. PR 결과로 검증을 시도했으나 신호에 변별력이 없었고 사전 가설과 반대 방향이 나왔습니다.",
+      "This grade is a position against my own history. There is still no external evidence that it correlates with real quality. Validation against PR outcomes was attempted, but the signals had no discriminating power and came out opposite to the pre-registered hypotheses.",
+    ),
   };
 }

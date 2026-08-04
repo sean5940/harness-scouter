@@ -998,7 +998,7 @@ async function main(): Promise<void> {
         `\n  Period #${p.index}  ${p.startedAt.slice(0, 10)} ~ ${p.endedAt.slice(0, 10)}  ${p.sessionIds.length} sessions\n\n`,
       ),
     );
-    for (const d of diagnosePeriod(db, p)) {
+    for (const d of diagnosePeriod(db, p, lang)) {
       if (d.items.length === 0) continue;
       const axis = report.axes.find((a) => a.key === d.axis);
       const score =
@@ -1084,7 +1084,11 @@ async function main(): Promise<void> {
         : closedForHtml.at(-1);
     const html =
       target === null || target === undefined
-        ? renderDiagnosisHtml(report, diagnosePeriod(db, report.period))
+        ? renderDiagnosisHtml(
+            report,
+            diagnosePeriod(db, report.period, lang),
+            lang,
+          )
         : renderStatHtml(
             buildStatWindow(target, closedForHtml, {
               rankByAbsoluteScore: flags.has("all"),
@@ -1113,7 +1117,7 @@ async function main(): Promise<void> {
     const diagnoses =
       result.latestClosed === null
         ? []
-        : diagnosePeriod(db, result.latestClosed.period);
+        : diagnosePeriod(db, result.latestClosed.period, lang);
     process.stdout.write(
       JSON.stringify(
         {

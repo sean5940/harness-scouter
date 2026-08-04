@@ -1,4 +1,5 @@
 import { AXIS_LABELS } from "./definitions.js";
+import { L, t, type Lang } from "./i18n.js";
 import type { AxisDiagnosis } from "./diagnose.js";
 import type { PeriodReport } from "./periods.js";
 
@@ -57,6 +58,7 @@ color:var(--hs-dim);font-size:12px}
 export function renderDiagnosisHtml(
   report: PeriodReport,
   diagnoses: AxisDiagnosis[],
+  lang: Lang,
 ): string {
   const p = report.period;
   const cov = report.coverage;
@@ -70,33 +72,48 @@ export function renderDiagnosisHtml(
       const axisTotal = d.items.reduce((s, i) => s + i.count, 0);
       const body =
         d.items.length === 0
-          ? `<div class="empty">잡힌 것 없음</div>`
+          ? `<div class="empty">${escapeHtml(t(L("잡힌 것 없음", "Nothing caught"), lang))}</div>`
           : `<ul>${d.items
               .map(
                 (item) =>
-                  `<li><span class="count">${item.count}회</span>` +
+                  `<li><span class="count">${item.count}${t(L("회", "x"), lang)}</span>` +
                   `<span class="subject">${escapeHtml(shortenPath(item.subject))}</span>` +
                   `<span class="sessions">${item.sessions
                     .map((s) => escapeHtml(s.slice(0, 8)))
                     .join(" ")}</span></li>`,
               )
               .join("")}</ul>`;
-      return `<div class="axis"><h2>${AXIS_LABELS[d.axis]}<span class="head">${escapeHtml(
-        d.headline,
-      )}</span><span class="n">${axisTotal}건</span></h2>${body}</div>`;
+      return `<div class="axis"><h2>${escapeHtml(t(AXIS_LABELS[d.axis], lang))}<span class="head">${escapeHtml(
+        t(d.headline, lang),
+      )}</span><span class="n">${axisTotal}${t(L("건", ""), lang)}</span></h2>${body}</div>`;
     })
     .join("\n");
 
-  return `<!doctype html><html lang="ko"><head><meta charset="utf-8">
-<title>Harness Scouter 누수 진단</title><style>${STYLE}</style></head>
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8">
+<title>${escapeHtml(t(L("Harness Scouter 누수 진단", "Harness Scouter leak diagnosis"), lang))}</title><style>${STYLE}</style></head>
 <body><div class="wrap">
-<h1>누수 진단 · 구간 #${p.index}</h1>
-<div class="meta">${p.startedAt.slice(0, 10)} ~ ${p.endedAt.slice(0, 10)} · 세션 ${
+<h1>${escapeHtml(t(L("누수 진단 · 구간", "Leak diagnosis · period"), lang))} #${p.index}</h1>
+<div class="meta">${p.startedAt.slice(0, 10)} ~ ${p.endedAt.slice(0, 10)} · ${t(L("세션", "sessions"), lang)} ${
     p.sessionIds.length
-  }개 · 계측 커버리지 ${cov === null ? "—" : `${(cov * 100).toFixed(1)}%`} · 합계 ${totalLeaks}건</div>
-<div class="hint">점수를 그리지 않습니다. 축의 구간 간 안정성이 확보되지 않아
-비율을 띄우면 잡음을 개선으로 읽게 됩니다. 건수와 근거 세션만 냅니다.</div>
+  } · ${t(L("계측 커버리지", "instrumented coverage"), lang)} ${cov === null ? "—" : `${(cov * 100).toFixed(1)}%`} · ${t(L("합계", "total"), lang)} ${totalLeaks}</div>
+<div class="hint">${escapeHtml(
+    t(
+      L(
+        "점수를 그리지 않습니다. 축의 구간 간 안정성이 확보되지 않아 비율을 띄우면 잡음을 개선으로 읽게 됩니다. 건수와 근거 세션만 냅니다.",
+        "No scores are drawn. The axes are not stable across periods, so showing ratios would read noise as improvement. Only counts and evidence sessions.",
+      ),
+      lang,
+    ),
+  )}</div>
 ${sections}
-<div class="foot">근거 세션은 앞 8자만 표시합니다. 전체는 <code>scouter diag</code>로 확인하세요.</div>
+<div class="foot">${escapeHtml(
+    t(
+      L(
+        "근거 세션은 앞 8자만 표시합니다. 전체는",
+        "Evidence sessions show the first 8 characters. For the full ids see",
+      ),
+      lang,
+    ),
+  )} <code>scouter diag</code>${t(L("로 확인하세요.", "."), lang)}</div>
 </div></body></html>`;
 }

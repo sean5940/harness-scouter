@@ -612,7 +612,7 @@ ${rankBasis} ${t(
     ),
     lang,
   )}<br>
-${escapeHtml(validityState().caveat)}
+${escapeHtml(t(validityState().caveat, lang))}
 </div>
 </div></body></html>`;
 }
