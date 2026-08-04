@@ -97,13 +97,16 @@ export interface StatComponent {
   value: number | null;
   denominator: number;
   /**
-   * 홀짝 분할 신뢰도. 구간의 세션을 두 묶음으로 갈라 같은 값을 두 번 계산했을 때의 상관.
+   * 구간 간 안정성. 이력 구간들에서 이 값이 얼마나 덜 흔들렸는가(1 - 2*표준편차).
+   *
+   * 게이트의 split-half 와 **다른 것**이다. split-half 는 한 구간 안에서 세션을 갈라
+   * 같은 값을 두 번 계산한 상관이고, 이것은 구간들 사이의 변동이다. 초판 주석이 이것을
+   * 홀짝 분할이라고 적어 두 지표가 같은 이름으로 섞여 있었다.
    *
    * 화면이 점수만 보여주고 그 점수를 믿을 근거를 안 보여주면, 읽는 사람이 0.03 짜리와
-   * 0.53 짜리를 같은 무게로 읽는다. 게이트에만 있고 화면에 없어서 생긴 구멍이다.
-   * 구간이 하나뿐인 계산에서는 낼 수 없어 null 이다.
+   * 0.53 짜리를 같은 무게로 읽는다. 이력이 얇으면 낼 수 없어 null 이다.
    */
-  reliability?: number | null;
+  crossPeriodStability?: number | null;
   /**
    * 점수에 넣지 않고 보여주기만 하는가.
    *
@@ -121,6 +124,10 @@ export interface StatValue {
   /** 0~100 */
   score: number | null;
   components: StatComponent[];
+  /** 점수를 만든 구성요소 수. 표시 전용과 판정 불가를 뺀 것. */
+  scoredCount: number;
+  /** 점수 대상이 될 수 있었던 구성요소 수. 표시 전용만 뺀 것. */
+  scorableCount: number;
 }
 
 export const STAT_ORDER: StatKey[] = [
@@ -221,14 +228,34 @@ function inverse(value: number | null): number | null {
   return value === null ? null : 1 - value;
 }
 
-/** 구성요소의 평균. 값이 없는 구성요소는 빼고 낸다. */
-function meanOf(components: StatComponent[]): number | null {
-  const values = components
-    .filter((c) => c.displayOnly !== true)
+/**
+ * 구성요소의 평균. 값이 없는 구성요소는 빼고 낸다.
+ *
+ * 빼는 것 자체는 옳다. 능력이 없거나 분모가 0 인 것을 0 점으로 세면 없는 일을 못했다고
+ * 하는 셈이다. 문제는 뺀 사실이 화면에 안 남는 것이었다. 셋 중 둘이 빠지면 남은 하나가
+ * 스탯 전체가 되는데 화면은 여전히 세 개를 재는 것처럼 보인다.
+ *
+ * 실제로 아무것도 안 고치고 인덱스 검색만 반복한 세션이 탐색력 100 을 받는다. 파일 찾기와
+ * 근거 확보는 분모가 0 이라 빠지고 인덱스 하나만 남기 때문이다. 그래서 몇 개로 냈는지를
+ * 함께 돌려준다.
+ */
+function meanOf(components: StatComponent[]): {
+  mean: number | null;
+  scored: number;
+  total: number;
+} {
+  const eligible = components.filter((c) => c.displayOnly !== true);
+  const values = eligible
     .map((c) => c.value)
     .filter((v): v is number => v !== null);
-  if (values.length === 0) return null;
-  return values.reduce((a, b) => a + b, 0) / values.length;
+  return {
+    mean:
+      values.length === 0
+        ? null
+        : values.reduce((a, b) => a + b, 0) / values.length,
+    scored: values.length,
+    total: eligible.length,
+  };
 }
 
 function component(
@@ -346,12 +373,14 @@ export function computeStats(
 
   return STAT_ORDER.map((key) => {
     const components = byKey[key];
-    const mean = meanOf(components);
+    const { mean, scored, total } = meanOf(components);
     return {
       key,
       label: STAT_LABELS[key],
       question: STAT_QUESTIONS[key],
       score: mean === null ? null : mean * 100,
+      scoredCount: scored,
+      scorableCount: total,
       components,
     };
   });
@@ -521,7 +550,7 @@ export function buildStatWindow(
   const hasHistory = closed.length >= MIN_HISTORY_WINDOWS;
 
   // 구성요소마다 이력 구간에서의 값이 얼마나 흔들리는지. 점수 옆에 붙일 신뢰 근거다.
-  const reliabilityOf = (key: ComponentKey): number | null => {
+  const crossPeriodStabilityOf = (key: ComponentKey): number | null => {
     if (!hasHistory) return null;
     const series = historyStats
       .flatMap((set) => set.flatMap((s) => s.components))
@@ -549,7 +578,7 @@ export function buildStatWindow(
       ...stat,
       components: stat.components.map((c) => ({
         ...c,
-        reliability: reliabilityOf(c.key),
+        crossPeriodStability: crossPeriodStabilityOf(c.key),
       })),
       percentile,
       rank:

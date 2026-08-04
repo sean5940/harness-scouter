@@ -206,13 +206,27 @@ function renderStat(stat: StatEntry, gray: boolean, lang: Lang): string {
           1,
         )}%"></span>`;
 
+  // 일부만으로 낸 점수면 그 사실을 붙인다. 없으면 셋 중 하나로 낸 점수를 셋 다 잰 것으로 읽는다.
+  const partial =
+    stat.score !== null && stat.scoredCount < stat.scorableCount
+      ? `<span class="partial">${escapeHtml(
+          t(
+            L(
+              `${stat.scorableCount}개 중 ${stat.scoredCount}개로 냈습니다`,
+              `scored from ${stat.scoredCount} of ${stat.scorableCount}`,
+            ),
+            lang,
+          ),
+        )}</span>`
+      : "";
+
   const parts = stat.components
     .map(
       (c) =>
         `<span class="part${c.displayOnly === true ? " displayOnly" : ""}">${escapeHtml(t(c.label, lang))}${c.displayOnly === true ? ` <span class="tag">${escapeHtml(t(L("표시", "display"), lang))}</span>` : ""} <b class="num">${
           c.value === null ? "—" : (c.value * 100).toFixed(0)
         }</b><span class="n num">n=${c.denominator.toLocaleString()}</span>${
-          c.reliability == null
+          c.crossPeriodStability == null
             ? ""
             : `<span class="rel num" title="${t(
                 L(
@@ -220,7 +234,7 @@ function renderStat(stat: StatEntry, gray: boolean, lang: Lang): string {
                   "Stability across periods. How little this value moved in the history",
                 ),
                 lang,
-              )}">±${(c.reliability * 100).toFixed(0)}</span>`
+              )}">±${(c.crossPeriodStability * 100).toFixed(0)}</span>`
         }</span>`,
     )
     .join("");
@@ -237,7 +251,7 @@ function renderStat(stat: StatEntry, gray: boolean, lang: Lang): string {
     <div class="val num">${num(stat.score)}</div>
     <div class="rk num" style="color:${gray ? "var(--dim)" : rankFill(stat.rank)}">${stat.rank}</div>
   </div>
-  <div class="parts">${parts}</div>
+  <div class="parts">${partial}${parts}</div>
 </div>`;
 }
 

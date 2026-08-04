@@ -482,6 +482,14 @@ async function main(): Promise<void> {
           `  ${label} ${bar(stat.score)} ${score}  ${stat.rank}   typical ${typical}  best ${best}\n`,
         ),
       );
+      // 구성요소 중 일부만으로 낸 점수면 그 사실을 적는다. 안 적으면 셋 중 하나로 낸
+      // 점수를 셋 다 잰 점수로 읽는다. 인덱스 검색만 반복한 세션이 탐색력 100 을 받는
+      // 것이 이 표시가 없을 때 벌어지는 일이다.
+      if (stat.score !== null && stat.scoredCount < stat.scorableCount) {
+        process.stdout.write(
+          `      ${say(lang, `구성요소 ${stat.scorableCount}개 중 ${stat.scoredCount}개로 냈습니다`, `scored from ${stat.scoredCount} of ${stat.scorableCount} components`)}\n`,
+        );
+      }
       for (const c of stat.components) {
         const v =
           c.value === null ? "  —" : (c.value * 100).toFixed(0).padStart(3);
