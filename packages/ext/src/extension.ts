@@ -138,7 +138,8 @@ async function callCli(
  */
 function formatStatus(json: ScouterJson): string {
   const all = json.allTime;
-  if (all === null || all === undefined) return "$(telescope) Scouter: 스캔 필요";
+  if (all === null || all === undefined)
+    return "$(telescope) Scouter: 스캔 필요";
   return `$(telescope) Lv.${all.level} ${all.overallRank}`;
 }
 
