@@ -1,4 +1,9 @@
 import type { ToolCallRecord } from "./db.js";
+import {
+  createResolver,
+  CLAUDE_CODE_PROFILE,
+  type CapabilityResolver,
+} from "./capability.js";
 import { searchTermOf } from "./bash.js";
 import {
   classifyBash,
@@ -48,11 +53,47 @@ export interface ExtraCounts {
   codeEdits: number;
 }
 
+/**
+ * 프로필이 알아본 호출 수. 미매핑은 이름별로 남겨 무엇을 프로필에 더할지 바로 보이게 한다.
+ */
+export interface CapabilityCounts {
+  total: number;
+  mapped: number;
+  /** 미매핑 도구 이름 → 횟수. 구간으로 합칠 때 더해진다. */
+  unmapped: Record<string, number>;
+}
+
+export function emptyCapability(): CapabilityCounts {
+  return { total: 0, mapped: 0, unmapped: {} };
+}
+
+export function addCapability(
+  a: CapabilityCounts,
+  b: CapabilityCounts,
+): CapabilityCounts {
+  const unmapped = { ...a.unmapped };
+  for (const [name, n] of Object.entries(b.unmapped)) {
+    unmapped[name] = (unmapped[name] ?? 0) + n;
+  }
+  return {
+    total: a.total + b.total,
+    mapped: a.mapped + b.mapped,
+    unmapped,
+  };
+}
+
 export interface SessionMetrics {
   sessionId: string;
   axes: AxisCounts;
   extras: ExtraCounts;
   coverage: CoverageCount;
+  /**
+   * 활성 프로필이 이 세션의 도구 호출을 얼마나 알아봤는가.
+   *
+   * 축과 따로 센다. 축은 "얼마나 잘했나"를 재고 이것은 "그 값을 믿어도 되나"를 잰다.
+   * 다른 하네스에서 낮은 점수가 나올 때, 나쁜 것인지 안 보이는 것인지를 이 값이 가른다.
+   */
+  capability: CapabilityCounts;
   /** 성패를 못 가린 verifier 호출 수. 축4 해석의 신뢰도 표시에 쓴다. */
   verifierOutcomeUnknown: number;
   /** 훅·권한에 막혀 실행되지 않은 호출 수. 축에서 빼되 진단에는 남긴다. */
@@ -114,9 +155,11 @@ interface CommitSegment {
 export function computeSessionMetrics(
   sessionId: string,
   calls: ToolCallRecord[],
+  resolver: CapabilityResolver = createResolver(CLAUDE_CODE_PROFILE),
 ): SessionMetrics {
   const axes = emptyAxes();
   const coverage: CoverageCount = { observable: 0, offChannel: 0, opaque: 0 };
+  const capability = emptyCapability();
   let verifierOutcomeUnknown = 0;
   let blockedCalls = 0;
 
@@ -167,6 +210,16 @@ export function computeSessionMetrics(
 
   for (const call of calls) {
     order += 1;
+
+    // 프로필이 이 호출을 알아보는가. 축 계산과 무관하게 전부 센다.
+    // 차단된 호출도 관측된 호출이므로 아래 continue 앞에서 센다.
+    capability.total += 1;
+    if (resolver.resolve(call.name, call.command) === null) {
+      capability.unmapped[call.name] =
+        (capability.unmapped[call.name] ?? 0) + 1;
+    } else {
+      capability.mapped += 1;
+    }
 
     // 훅이나 권한에 막힌 호출은 실행되지 않았다. 축에 넣으면 게이트가 잘 작동할수록
     // 점수가 나빠지는 역설이 생긴다. 실제로 축5b 분자의 상당수가 이 프로젝트 자신의
@@ -374,6 +427,7 @@ export function computeSessionMetrics(
     axes,
     extras,
     coverage,
+    capability,
     verifierOutcomeUnknown,
     blockedCalls,
   };
