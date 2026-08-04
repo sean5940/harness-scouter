@@ -82,16 +82,85 @@ npm run scouter -- scan     # 890MB 全体を再パース、8秒
 
 ## インストール
 
-Node 22.5 以上が必要です。`node:sqlite` の組み込みモジュールを使うのでネイティブ依存がありません。
+### 単一実行ファイル (Node なし)
+
+タグごとにリリースへ添付されます。ランタイムが入っているので、事前に何も入れる必要がありません。
 
 ```bash
-git clone <このリポジトリ>
+# darwin-arm64 · darwin-x64 · linux-x64
+curl -fsSL https://github.com/sean5940/harness-scouter/releases/latest/download/scouter-darwin-arm64.tar.gz | tar xz
+./scouter status --all
+```
+
+Node のランタイムを丸ごと入れているので**105MB 前後**です。macOS は ad-hoc 署名なので、初めて開くときは右クリックから開く必要があります。
+
+### ソースから
+
+Node 22.5 以上が必要です。`node:sqlite` の組み込みモジュールを使うので**ネイティブ依存がありません。**
+
+```bash
+git clone https://github.com/sean5940/harness-scouter.git
 cd harness-scouter
 npm install
 npm run build
+npm run scouter -- status --all
 ```
 
 `gh` CLI は PR の結果を見るときだけ必要です(`scouter outcomes`)。なくても残りは全部動きます。
+
+## 言語
+
+画面は**韓国語と英語**を出します。ドキュメントは3言語で、一番上の切り替え行から選べます。
+
+```bash
+scouter status --all                 # 自動判定
+scouter status --all --lang en       # 英語
+scouter status --all --lang ko       # 韓国語
+SCOUTER_LANG=en scouter status --all # 環境変数で固定
+```
+
+自動判定は**明示した値 → `SCOUTER_LANG` → `LC_ALL`/`LC_MESSAGES`/`LANG` → 英語**の順です。ロケールは先頭の2文字だけを見るので、`ko_KR.UTF-8` なら韓国語です。
+
+知らない言語を渡すと黙って通さず、サポートする一覧と一緒に失敗します。
+
+```
+$ scouter status --lang klingon
+알 수 없는 언어: klingon (지원: ko, en) / unknown language
+```
+
+**言語を変えてもスコアは同じです。** 多言語化が定義に触れていないという意味で、リリースごとに2言語のスコアを突き合わせて確認します。
+
+## 他のハーネスに使う
+
+指標はツール名ではなく**能力**で定義されています。他のハーネスを測るには、名前から能力へ向かうマッピングを一つ埋めるだけで済みます。
+
+| 能力 | Claude Code | 何を測るか |
+|---|---|---|
+| `file-find` | `Glob` | ファイルパスを探す |
+| `content-search` | `Grep` | 内容の全数スキャン |
+| `index-search` | qmd · graphify (ツール・**シェル CLI の両方**) | インデックスベースの検索 |
+| `index-fetch` | `qmd get` 系 | 既に知っている文書を取り出す |
+| `file-read` | `Read` | ファイルを読む |
+| `file-edit` | `Edit` · `Write` · `MultiEdit` | ファイルを直す |
+| `shell` | `Bash` | シェルの実行 |
+| `subagent` | `Agent` · `Task` | 委譲 |
+| `other` | `TodoWrite` · `AskUserQuestion` など | 軸は見ない。**知らないものと区別するために明示** |
+
+**シェルの欄が核心です。** ツールで呼んでもシェルで呼んでも同じ仕事をしたのに、シェルを見なければ実際の使用量を丸ごと取りこぼします。このリポジトリで graphify の CLI 呼び出し 1,220件を4件と見ていたことがあります。実際の使用量の300分の1です。
+
+### 知らないものには音が鳴ります
+
+マッピング表はいつでも古くなります。そのため、プロファイルが観測をどれだけ覆っているかも一緒に測ります。
+
+```
+観測したツール呼び出し 57,756件
+  能力にマッピング済み  57,749  100.0%
+  未マッピング               7    0.0%
+```
+
+**カバレッジが90%を下回るとスコアを出さず、何が捕まえられなかったかを見せます。** 他人のハーネスで0点が出るのではなく、「`read_file` を知りません」が出ます。
+
+graphify の事故の本質は、名前を間違えたことではなく**間違えたと気づけなかった**ことでした。画面は何も言いませんでした。
 
 ## 使い方
 
