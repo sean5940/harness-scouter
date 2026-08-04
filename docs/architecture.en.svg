@@ -1,0 +1,195 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 660" width="1080" height="660" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Pretendard, 'Apple SD Gothic Neo', sans-serif">
+  <style>
+    :root { color-scheme: light dark; }
+    .bg    { fill: #faf9f7; }
+    .band  { fill: #f2f1ee; stroke: #e2e0db; }
+    .box   { fill: #ffffff; stroke: #d5d7dd; }
+    .accent{ fill: #e8f3f1; stroke: #2a7d70; }
+    .warn  { fill: #fbf1e6; stroke: #a8802f; }
+    .t     { fill: #1a1d23; }
+    .dim   { fill: #666c78; }
+    .arrow { stroke: #8a93a3; fill: none; }
+    .head  { fill: #8a93a3; }
+    .rule  { stroke: #e2e0db; }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill: #101317; }
+      .band  { fill: #171b21; stroke: #242932; }
+      .box   { fill: #1c212a; stroke: #2a2f38; }
+      .accent{ fill: #16302c; stroke: #3fa896; }
+      .warn  { fill: #2c2318; stroke: #c99a4e; }
+      .t     { fill: #e8eaee; }
+      .dim   { fill: #8d939e; }
+      .arrow { stroke: #4a5568; }
+      .head  { fill: #4a5568; }
+      .rule  { stroke: #242932; }
+    }
+    text { font-size: 12px; }
+    .title { font-size: 15px; font-weight: 700; }
+    .lane  { font-size: 10.5px; letter-spacing: .16em; font-weight: 600; }
+    .name  { font-size: 12.5px; font-weight: 600; }
+    .note  { font-size: 10.5px; }
+    .mono  { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="1080" height="660"/>
+  <text class="title t" x="32" y="38">Harness Scouter</text>
+  <text class="dim" x="32" y="58">Scores the quality of a coding agent harness as 6 stats, from local transcripts.</text>
+
+  <!-- stage headers -->
+  <text class="lane head" x="42"  y="96">Input</text>
+  <text class="lane head" x="250" y="96">Parse and extract</text>
+  <text class="lane head" x="452" y="96">Facts</text>
+  <text class="lane head" x="640" y="96">Interpretation</text>
+  <text class="lane head" x="900" y="96">Screens</text>
+  <line class="rule" x1="32" y1="106" x2="1048" y2="106"/>
+
+  <!-- column dividers -->
+  <line class="rule" x1="232" y1="112" x2="232" y2="628"/>
+  <line class="rule" x1="434" y1="112" x2="434" y2="628"/>
+  <line class="rule" x1="622" y1="112" x2="622" y2="628"/>
+  <line class="rule" x1="882" y1="112" x2="882" y2="628"/>
+
+  <!-- ============ row 1: behavior pipeline ============ -->
+  <rect class="band" x="32" y="124" width="1016" height="196" rx="6"/>
+  <text class="lane dim" x="46" y="146">Behavior pipeline</text>
+
+  <!-- input -->
+  <rect class="box" x="42" y="160" width="192" height="52" rx="4"/>
+  <text class="name t" x="54" y="180">Transcripts</text>
+  <text class="mono dim" x="54" y="198">~/.claude/projects/*.jsonl</text>
+
+  <!-- parsing -->
+  <rect class="box" x="248" y="156" width="170" height="44" rx="4"/>
+  <text class="name t" x="260" y="174">parser.ts</text>
+  <text class="note dim" x="260" y="190">Incremental · byte cursor</text>
+
+  <rect class="box" x="248" y="212" width="170" height="60" rx="4"/>
+  <text class="name t" x="260" y="230">extract.ts</text>
+  <text class="note dim" x="260" y="246" font-size="9.5">Facts only, no interpretation</text>
+  <text class="note dim" x="260" y="262" font-size="9.5">Main/subagent shapes differ</text>
+
+  <!-- fact DB -->
+  <rect class="box" x="450" y="156" width="156" height="116" rx="4"/>
+  <text class="name t" x="462" y="176">db.ts · SQLite</text>
+  <text class="mono dim" x="462" y="196">session · tool_call</text>
+  <text class="mono dim" x="462" y="212">tool_result · usage</text>
+  <text class="mono dim" x="462" y="228">session_event · artifact</text>
+  <text class="note dim" x="462" y="252">No scores stored.</text>
+  <text class="note dim" x="462" y="266" >Recomputed on redefinition.</text>
+
+  <!-- interpretation -->
+  <rect class="accent" x="638" y="150" width="228" height="46" rx="4"/>
+  <text class="name t" x="650" y="168">definitions.ts · bash.ts</text>
+  <text class="note dim" x="650" y="184" font-size="10">Single source for decision boundaries</text>
+
+  <rect class="box" x="638" y="204" width="108" height="40" rx="4"/>
+  <text class="name t" x="650" y="221">metrics.ts</text>
+  <text class="note dim" x="650" y="236">Axis numerator · denominator</text>
+
+  <rect class="box" x="758" y="204" width="108" height="40" rx="4"/>
+  <text class="name t" x="770" y="221">periods.ts</text>
+  <text class="note dim" x="770" y="236">Event budgets</text>
+
+  <rect class="box" x="638" y="252" width="228" height="40" rx="4"/>
+  <text class="name t" x="650" y="269">stats.ts</text>
+  <text class="note dim" x="650" y="284">6 stats · grade · personal best</text>
+
+  <!-- screens -->
+  <rect class="box" x="898" y="156" width="136" height="36" rx="4"/>
+  <text class="name t" x="910" y="179">Stat window</text>
+
+  <rect class="box" x="898" y="200" width="136" height="36" rx="4"/>
+  <text class="name t" x="910" y="223">Growth guide</text>
+
+  <rect class="box" x="898" y="244" width="136" height="36" rx="4"/>
+  <text class="name t" x="910" y="267">Diagnostics · growth</text>
+
+  <!-- row 1 arrows -->
+  <path class="arrow" d="M234 186 L246 186" marker-end="url(#a)"/>
+  <path class="arrow" d="M333 200 L333 210" marker-end="url(#a)"/>
+  <path class="arrow" d="M418 242 L448 220" marker-end="url(#a)"/>
+  <path class="arrow" d="M606 214 L636 218" marker-end="url(#a)"/>
+  <path class="arrow" d="M746 224 L756 224" marker-end="url(#a)"/>
+  <path class="arrow" d="M752 244 L752 250" marker-end="url(#a)"/>
+  <path class="arrow" d="M866 272 L896 262" marker-end="url(#a)"/>
+  <path class="arrow" d="M866 268 L896 180" marker-end="url(#a)"/>
+
+  <!-- ============ row 2: harness structure ============ -->
+  <rect class="band" x="32" y="336" width="1016" height="112" rx="6"/>
+  <text class="lane dim" x="46" y="358">Harness structure — the harness itself, not behavior</text>
+
+  <rect class="box" x="42" y="370" width="192" height="60" rx="4"/>
+  <text class="name t" x="54" y="390">Repository</text>
+  <text class="mono dim" x="54" y="407">.claude/settings · pkg.json</text>
+  <text class="mono dim" x="54" y="422" font-size="9.5">workflows · rule docs · skills</text>
+
+  <rect class="box" x="248" y="370" width="170" height="60" rx="4"/>
+  <text class="name t" x="260" y="390">harness.ts</text>
+  <text class="note dim" x="260" y="407">Sensor · guide inventory</text>
+  <text class="note dim" x="260" y="422">Guide/sensor sync check</text>
+
+  <rect class="box" x="450" y="370" width="416" height="60" rx="4"/>
+  <text class="name t" x="462" y="390">Fowler harness engineering axes</text>
+  <text class="note dim" x="462" y="407" font-size="9.5">Direction feedforward / feedback  ·  Execution computational / inferential</text>
+  <text class="note dim" x="462" y="422" font-size="9.5">Stage pre-integration / self-correcting loop / post-integration / continuous monitoring</text>
+
+  <rect class="box" x="898" y="378" width="136" height="44" rx="4"/>
+  <text class="name t" x="910" y="396">Structure summary</text>
+  <text class="note dim" x="910" y="412">Sensors = denominator</text>
+
+  <path class="arrow" d="M234 400 L246 400" marker-end="url(#a)"/>
+  <path class="arrow" d="M418 400 L448 400" marker-end="url(#a)"/>
+  <path class="arrow" d="M866 400 L896 400" marker-end="url(#a)"/>
+
+  <!-- ============ row 3: trust machinery ============ -->
+  <rect class="band" x="32" y="464" width="1016" height="164" rx="6"/>
+  <text class="lane dim" x="46" y="486">Trust machinery — can these numbers be trusted</text>
+
+  <rect class="box" x="42" y="498" width="192" height="52" rx="4"/>
+  <text class="name t" x="54" y="518">labels.jsonl</text>
+  <text class="note dim" x="54" y="535">Human judgment. Outside the DB</text>
+
+  <rect class="box" x="42" y="562" width="192" height="52" rx="4"/>
+  <text class="name t" x="54" y="582">GitHub</text>
+  <text class="note dim" x="54" y="599">PR outcomes · commit hashes</text>
+
+  <rect class="box" x="248" y="498" width="170" height="52" rx="4"/>
+  <text class="name t" x="260" y="518">gate.ts</text>
+  <text class="note dim" x="260" y="535">M0.5 reproducibility gate</text>
+
+  <rect class="box" x="248" y="562" width="170" height="52" rx="4"/>
+  <text class="name t" x="260" y="582">outcomes.ts</text>
+  <text class="note dim" x="260" y="599" font-size="9.5">PR outcomes · signal discrimination</text>
+
+  <rect class="box" x="450" y="498" width="416" height="52" rx="4"/>
+  <text class="name t" x="462" y="518">Gaming scenarios — mutation testing on the metrics</text>
+  <text class="note dim" x="462" y="535">For each axis, a path where the score rises but activity does not</text>
+
+  <rect class="warn" x="450" y="562" width="416" height="52" rx="4"/>
+  <text class="name t" x="462" y="582">validity.ts — no external ground truth</text>
+  <text class="note dim" x="462" y="599">Tried human labels and PR outcomes; rejected both. Said so on screen</text>
+
+  <rect class="box" x="898" y="498" width="136" height="52" rx="4"/>
+  <text class="name t" x="910" y="518">Gate results</text>
+  <text class="note dim" x="910" y="535">Reported per screen</text>
+
+  <rect class="warn" x="898" y="562" width="136" height="52" rx="4"/>
+  <text class="name t" x="910" y="582">Footnotes</text>
+  <text class="note dim" x="910" y="599">Limits stay visible</text>
+
+  <path class="arrow" d="M234 524 L246 524" marker-end="url(#a)"/>
+  <path class="arrow" d="M234 588 L246 588" marker-end="url(#a)"/>
+  <path class="arrow" d="M418 524 L448 524" marker-end="url(#a)"/>
+  <path class="arrow" d="M418 588 L448 588" marker-end="url(#a)"/>
+  <path class="arrow" d="M866 524 L896 524" marker-end="url(#a)"/>
+  <path class="arrow" d="M866 588 L896 588" marker-end="url(#a)"/>
+
+  <!-- fact DB into the gate -->
+  <path class="arrow" d="M528 272 L528 300 L330 300 L330 496" marker-end="url(#a)" stroke-dasharray="4 3"/>
+
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path class="head" d="M0 0 L10 5 L0 10 z"/>
+    </marker>
+  </defs>
+</svg>
