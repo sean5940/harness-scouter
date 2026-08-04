@@ -134,17 +134,17 @@ $ scouter status --lang klingon
 
 The metrics are defined by **capability**, not by tool name. Measuring another harness only takes filling in one mapping from names to capabilities.
 
-| Capability | Claude Code | What it measures |
-|---|---|---|
-| `file-find` | `Glob` | Finding file paths |
-| `content-search` | `Grep` | Full scan of content |
-| `index-search` | qmd · graphify (**both tool and shell CLI**) | Index-based search |
-| `index-fetch` | the `qmd get` family | Pulling out a document already known |
-| `file-read` | `Read` | Reading files |
-| `file-edit` | `Edit` · `Write` · `MultiEdit` | Editing files |
-| `shell` | `Bash` | Running a shell |
-| `subagent` | `Agent` · `Task` | Delegation |
-| `other` | `TodoWrite`, `AskUserQuestion`, and so on | Not seen by the axes. **Listed explicitly to keep it apart from the unknown** |
+| Capability       | Claude Code                                  | What it measures                                                              |
+| ---------------- | -------------------------------------------- | ----------------------------------------------------------------------------- |
+| `file-find`      | `Glob`                                       | Finding file paths                                                            |
+| `content-search` | `Grep`                                       | Full scan of content                                                          |
+| `index-search`   | qmd · graphify (**both tool and shell CLI**) | Index-based search                                                            |
+| `index-fetch`    | the `qmd get` family                         | Pulling out a document already known                                          |
+| `file-read`      | `Read`                                       | Reading files                                                                 |
+| `file-edit`      | `Edit` · `Write` · `MultiEdit`               | Editing files                                                                 |
+| `shell`          | `Bash`                                       | Running a shell                                                               |
+| `subagent`       | `Agent` · `Task`                             | Delegation                                                                    |
+| `other`          | `TodoWrite`, `AskUserQuestion`, and so on    | Not seen by the axes. **Listed explicitly to keep it apart from the unknown** |
 
 **The shell column is the crux.** Calling through a tool and calling through the shell do the same work, and not looking at the shell loses the whole of actual usage. In this repository 1,220 graphify CLI calls were once seen as 4. 1/300 of actual use.
 
@@ -228,6 +228,38 @@ npm run scouter -- outcomes     # PR outcomes and signal discrimination (needs g
 npm run scouter -- periods      # list of periods
 npm run scouter -- json         # JSON for the extension
 ```
+
+## Letting the agent read it directly (MCP)
+
+An agent can read the quality of its own harness **mid-session**. Unlike a dashboard a person looks at after the fact, this reaches the moment of action.
+
+Put it in `.mcp.json` or the Claude Code settings.
+
+```json
+{
+  "mcpServers": {
+    "harness-scouter": {
+      "command": "node",
+      "args": ["/path/to/harness-scouter/packages/mcp/dist/index.js"],
+      "env": { "SCOUTER_LANG": "en" }
+    }
+  }
+}
+```
+
+| Tool              | What it gives                                                   |
+| ----------------- | --------------------------------------------------------------- |
+| `scouter_status`  | The current stats and the score of each component               |
+| `scouter_guide`   | The behavior that raises a low stat · **antipatterns included** |
+| `scouter_diag`    | Where it leaks (with the sessions as evidence)                  |
+| `scouter_harness` | The sensor and guide inventory and the sync check               |
+| `scouter_gate`    | Which axes hold up which screen                                 |
+
+**Everything is read-only.** Writing labels and modifying the DB are not exposed.
+
+`scouter_guide` carrying the antipatterns **in the same response** is deliberate. The moment something reads its own score and moves to raise it, the incentive to game it appears, and only putting the prescriptions that raise the score without raising quality right beside it makes that visible at the moment of action.
+
+It handles stdio JSON-RPC directly instead of going through an SDK, so **there are no runtime dependencies.**
 
 ## How to read the screen
 
