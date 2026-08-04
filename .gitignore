@@ -6,3 +6,6 @@ dist/
 *.vsix
 *.tsbuildinfo
 .DS_Store
+
+# SEA 빌드 산출물
+build/

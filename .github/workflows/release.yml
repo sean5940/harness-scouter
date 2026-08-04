@@ -1,0 +1,86 @@
+name: release
+
+# 태그를 밀면 단일 실행파일을 만들어 릴리스에 붙인다.
+#
+# node:sqlite 를 쓰기 때문에 Node 22.5 이상이 필요하다. 받는 사람에게 그 조건을 지우려고
+# SEA(Single Executable Application)로 런타임을 함께 넣는다. 대신 파일이 80MB 안팎이 되므로
+# Node 가 이미 있는 사람을 위해 npm 경로도 함께 남긴다.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "릴리스에 붙일 태그"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: darwin-arm64
+          - os: macos-13
+            target: darwin-x64
+          - os: ubuntu-latest
+            target: linux-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+      # SEA 는 번들된 단일 js 를 요구한다. 워크스페이스 상대 import 를 하나로 접는다.
+      - name: 번들
+        run: node scripts/bundle.mjs
+
+      - name: 단일 실행파일 만들기
+        run: node scripts/sea.mjs
+        env:
+          SEA_TARGET: ${{ matrix.target }}
+
+      - name: 동작 확인
+        run: |
+          ./build/scouter --version
+          ./build/scouter --help > /dev/null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scouter-${{ matrix.target }}
+          path: build/scouter-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-artifacts
+          merge-multiple: true
+
+      - name: 체크섬
+        run: |
+          cd dist-artifacts
+          shasum -a 256 *.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: |
+            dist-artifacts/*.tar.gz
+            dist-artifacts/SHA256SUMS
+          generate_release_notes: true
