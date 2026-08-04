@@ -1,0 +1,195 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 660" width="1080" height="660" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Pretendard, 'Apple SD Gothic Neo', sans-serif">
+  <style>
+    :root { color-scheme: light dark; }
+    .bg    { fill: #faf9f7; }
+    .band  { fill: #f2f1ee; stroke: #e2e0db; }
+    .box   { fill: #ffffff; stroke: #d5d7dd; }
+    .accent{ fill: #e8f3f1; stroke: #2a7d70; }
+    .warn  { fill: #fbf1e6; stroke: #a8802f; }
+    .t     { fill: #1a1d23; }
+    .dim   { fill: #666c78; }
+    .arrow { stroke: #8a93a3; fill: none; }
+    .head  { fill: #8a93a3; }
+    .rule  { stroke: #e2e0db; }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill: #101317; }
+      .band  { fill: #171b21; stroke: #242932; }
+      .box   { fill: #1c212a; stroke: #2a2f38; }
+      .accent{ fill: #16302c; stroke: #3fa896; }
+      .warn  { fill: #2c2318; stroke: #c99a4e; }
+      .t     { fill: #e8eaee; }
+      .dim   { fill: #8d939e; }
+      .arrow { stroke: #4a5568; }
+      .head  { fill: #4a5568; }
+      .rule  { stroke: #242932; }
+    }
+    text { font-size: 12px; }
+    .title { font-size: 15px; font-weight: 700; }
+    .lane  { font-size: 10.5px; letter-spacing: .16em; font-weight: 600; }
+    .name  { font-size: 12.5px; font-weight: 600; }
+    .note  { font-size: 10.5px; }
+    .mono  { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="1080" height="660"/>
+  <text class="title t" x="32" y="38">Harness Scouter</text>
+  <text class="dim" x="32" y="58">로컬 트랜스크립트에서 코딩 에이전트 하네스의 품질을 6능력치로 수치화합니다.</text>
+
+  <!-- 단계 머리글 -->
+  <text class="lane head" x="42"  y="96">입력</text>
+  <text class="lane head" x="250" y="96">파싱과 추출</text>
+  <text class="lane head" x="452" y="96">사실</text>
+  <text class="lane head" x="640" y="96">해석</text>
+  <text class="lane head" x="900" y="96">화면</text>
+  <line class="rule" x1="32" y1="106" x2="1048" y2="106"/>
+
+  <!-- 세로 구분선 -->
+  <line class="rule" x1="232" y1="112" x2="232" y2="628"/>
+  <line class="rule" x1="434" y1="112" x2="434" y2="628"/>
+  <line class="rule" x1="622" y1="112" x2="622" y2="628"/>
+  <line class="rule" x1="882" y1="112" x2="882" y2="628"/>
+
+  <!-- ============ 1행: 행동 파이프라인 ============ -->
+  <rect class="band" x="32" y="124" width="1016" height="196" rx="6"/>
+  <text class="lane dim" x="46" y="146">행동 파이프라인</text>
+
+  <!-- 입력 -->
+  <rect class="box" x="42" y="160" width="192" height="52" rx="4"/>
+  <text class="name t" x="54" y="180">트랜스크립트</text>
+  <text class="mono dim" x="54" y="198">~/.claude/projects/*.jsonl</text>
+
+  <!-- 파싱 -->
+  <rect class="box" x="248" y="156" width="170" height="44" rx="4"/>
+  <text class="name t" x="260" y="174">parser.ts</text>
+  <text class="note dim" x="260" y="190">증분 파싱 · 바이트 커서</text>
+
+  <rect class="box" x="248" y="212" width="170" height="60" rx="4"/>
+  <text class="name t" x="260" y="230">extract.ts</text>
+  <text class="note dim" x="260" y="246">사실만 뽑고 해석은 안 함</text>
+  <text class="note dim" x="260" y="262">메인·subagent 형태가 다름</text>
+
+  <!-- 사실 DB -->
+  <rect class="box" x="450" y="156" width="156" height="116" rx="4"/>
+  <text class="name t" x="462" y="176">db.ts · SQLite</text>
+  <text class="mono dim" x="462" y="196">session · tool_call</text>
+  <text class="mono dim" x="462" y="212">tool_result · usage</text>
+  <text class="mono dim" x="462" y="228">session_event · artifact</text>
+  <text class="note dim" x="462" y="252">점수를 저장하지 않습니다.</text>
+  <text class="note dim" x="462" y="266">정의가 바뀌면 재계산합니다.</text>
+
+  <!-- 해석 -->
+  <rect class="accent" x="638" y="150" width="228" height="46" rx="4"/>
+  <text class="name t" x="650" y="168">definitions.ts · bash.ts</text>
+  <text class="note dim" x="650" y="184">판정 경계의 단일 기준점</text>
+
+  <rect class="box" x="638" y="204" width="108" height="40" rx="4"/>
+  <text class="name t" x="650" y="221">metrics.ts</text>
+  <text class="note dim" x="650" y="236">축 분자·분모</text>
+
+  <rect class="box" x="758" y="204" width="108" height="40" rx="4"/>
+  <text class="name t" x="770" y="221">periods.ts</text>
+  <text class="note dim" x="770" y="236">이벤트 예산 구간</text>
+
+  <rect class="box" x="638" y="252" width="228" height="40" rx="4"/>
+  <text class="name t" x="650" y="269">stats.ts</text>
+  <text class="note dim" x="650" y="284">6능력치 합성 · 등급 · 개인최고</text>
+
+  <!-- 화면 -->
+  <rect class="box" x="898" y="156" width="136" height="36" rx="4"/>
+  <text class="name t" x="910" y="179">스탯 창</text>
+
+  <rect class="box" x="898" y="200" width="136" height="36" rx="4"/>
+  <text class="name t" x="910" y="223">성장 가이드</text>
+
+  <rect class="box" x="898" y="244" width="136" height="36" rx="4"/>
+  <text class="name t" x="910" y="267">진단 · 성장 비교</text>
+
+  <!-- 화살표 1행 -->
+  <path class="arrow" d="M234 186 L246 186" marker-end="url(#a)"/>
+  <path class="arrow" d="M333 200 L333 210" marker-end="url(#a)"/>
+  <path class="arrow" d="M418 242 L448 220" marker-end="url(#a)"/>
+  <path class="arrow" d="M606 214 L636 218" marker-end="url(#a)"/>
+  <path class="arrow" d="M746 224 L756 224" marker-end="url(#a)"/>
+  <path class="arrow" d="M752 244 L752 250" marker-end="url(#a)"/>
+  <path class="arrow" d="M866 272 L896 262" marker-end="url(#a)"/>
+  <path class="arrow" d="M866 268 L896 180" marker-end="url(#a)"/>
+
+  <!-- ============ 2행: 하네스 구조 ============ -->
+  <rect class="band" x="32" y="336" width="1016" height="112" rx="6"/>
+  <text class="lane dim" x="46" y="358">하네스 구조 — 행동이 아니라 하네스 자체</text>
+
+  <rect class="box" x="42" y="370" width="192" height="60" rx="4"/>
+  <text class="name t" x="54" y="390">저장소</text>
+  <text class="mono dim" x="54" y="407">.claude/settings · pkg.json</text>
+  <text class="mono dim" x="54" y="422">workflows · 규칙 문서 · 스킬</text>
+
+  <rect class="box" x="248" y="370" width="170" height="60" rx="4"/>
+  <text class="name t" x="260" y="390">harness.ts</text>
+  <text class="note dim" x="260" y="407">센서·가이드 인벤토리</text>
+  <text class="note dim" x="260" y="422">가이드·센서 동기화 검사</text>
+
+  <rect class="box" x="450" y="370" width="416" height="60" rx="4"/>
+  <text class="name t" x="462" y="390">Fowler harness engineering 축</text>
+  <text class="note dim" x="462" y="407">방향 feedforward / feedback  ·  실행 computational / inferential</text>
+  <text class="note dim" x="462" y="422">생명주기 통합 전 / 자가수정 루프 / 통합 후 / 지속 모니터링</text>
+
+  <rect class="box" x="898" y="378" width="136" height="44" rx="4"/>
+  <text class="name t" x="910" y="396">구조 요약</text>
+  <text class="note dim" x="910" y="412">센서 수가 행동의 분모</text>
+
+  <path class="arrow" d="M234 400 L246 400" marker-end="url(#a)"/>
+  <path class="arrow" d="M418 400 L448 400" marker-end="url(#a)"/>
+  <path class="arrow" d="M866 400 L896 400" marker-end="url(#a)"/>
+
+  <!-- ============ 3행: 신뢰 장치 ============ -->
+  <rect class="band" x="32" y="464" width="1016" height="164" rx="6"/>
+  <text class="lane dim" x="46" y="486">신뢰 장치 — 이 숫자를 믿어도 되는가</text>
+
+  <rect class="box" x="42" y="498" width="192" height="52" rx="4"/>
+  <text class="name t" x="54" y="518">labels.jsonl</text>
+  <text class="note dim" x="54" y="535">사람 판단. DB 밖에 둡니다</text>
+
+  <rect class="box" x="42" y="562" width="192" height="52" rx="4"/>
+  <text class="name t" x="54" y="582">GitHub</text>
+  <text class="note dim" x="54" y="599">PR 결과 · 커밋 해시</text>
+
+  <rect class="box" x="248" y="498" width="170" height="52" rx="4"/>
+  <text class="name t" x="260" y="518">gate.ts</text>
+  <text class="note dim" x="260" y="535">M0.5 재현성 게이트</text>
+
+  <rect class="box" x="248" y="562" width="170" height="52" rx="4"/>
+  <text class="name t" x="260" y="582">outcomes.ts</text>
+  <text class="note dim" x="260" y="599">PR 결과 · 신호 변별력</text>
+
+  <rect class="box" x="450" y="498" width="416" height="52" rx="4"/>
+  <text class="name t" x="462" y="518">조작 시나리오 — 지표 자신에 대한 mutation testing</text>
+  <text class="note dim" x="462" y="535">활동은 그대로인데 계산만 좋아지는 경로를 축마다 등록합니다</text>
+
+  <rect class="warn" x="450" y="562" width="416" height="52" rx="4"/>
+  <text class="name t" x="462" y="582">validity.ts — 외부 준거 없음</text>
+  <text class="note dim" x="462" y="599">사람 라벨과 PR 결과를 시도해 둘 다 기각. 그 사실을 화면에 적습니다</text>
+
+  <rect class="box" x="898" y="498" width="136" height="52" rx="4"/>
+  <text class="name t" x="910" y="518">게이트 결과</text>
+  <text class="note dim" x="910" y="535">화면별로 나눠 보고</text>
+
+  <rect class="warn" x="898" y="562" width="136" height="52" rx="4"/>
+  <text class="name t" x="910" y="582">각주</text>
+  <text class="note dim" x="910" y="599">한계를 감추지 않음</text>
+
+  <path class="arrow" d="M234 524 L246 524" marker-end="url(#a)"/>
+  <path class="arrow" d="M234 588 L246 588" marker-end="url(#a)"/>
+  <path class="arrow" d="M418 524 L448 524" marker-end="url(#a)"/>
+  <path class="arrow" d="M418 588 L448 588" marker-end="url(#a)"/>
+  <path class="arrow" d="M866 524 L896 524" marker-end="url(#a)"/>
+  <path class="arrow" d="M866 588 L896 588" marker-end="url(#a)"/>
+
+  <!-- 사실 DB 가 게이트로 -->
+  <path class="arrow" d="M528 272 L528 300 L330 300 L330 496" marker-end="url(#a)" stroke-dasharray="4 3"/>
+
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path class="head" d="M0 0 L10 5 L0 10 z"/>
+    </marker>
+  </defs>
+</svg>
