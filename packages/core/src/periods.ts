@@ -2,6 +2,7 @@ import {
   AXIS_ORDER,
   DELTA_BASELINE_PERIODS,
   PERIOD_BUDGET,
+  PERIOD_MIN_SESSIONS,
   PERIOD_SESSION_CAP,
   type AxisKey,
 } from "./definitions.js";
@@ -72,8 +73,28 @@ export interface SessionForPeriod {
   reachedArtifact: boolean;
 }
 
-function unfilled(axes: AxisCounts): AxisKey[] {
-  return AXIS_ORDER.filter((key) => axes[key].den < PERIOD_BUDGET[key]);
+/**
+ * 이 코퍼스에서 애초에 채워질 수 있는 축.
+ *
+ * 예산을 기다리려면 언젠가 채워질 가망이 있어야 한다. 코퍼스 전체에서 분모가 0 인 축은
+ * 세션을 아무리 더 쌓아도 안 채워지므로, 그것을 기다리면 구간이 영원히 안 닫힌다.
+ *
+ * 실제로 그렇게 막혔다. git 저장소가 아닌 곳에서 쓰면 커밋이 없어 검증 축 분모가 0 이고,
+ * 세션 15개짜리 사용자는 세션 상한 40 에도 못 닿아 닫힌 구간이 하나도 안 생겼다. 그러면
+ * 등급·막대·통상범위를 요구하는 모든 화면이 거부한다. 도구가 통째로 안 도는 것이다.
+ *
+ * 상한 40 은 355 세션 코퍼스에 맞춰 잡은 값이라 작은 코퍼스에는 탈출구가 못 된다.
+ * 상한을 낮추는 대신 "못 채우는 축을 안 기다린다"로 고친다. 값을 다시 튜닝하는 것이
+ * 아니라 조건 자체를 코퍼스에 맞게 만드는 쪽이다.
+ */
+function fillableAxes(sessions: SessionForPeriod[]): AxisKey[] {
+  return AXIS_ORDER.filter((key) =>
+    sessions.some((s) => s.metrics.axes[key].den > 0),
+  );
+}
+
+function unfilled(axes: AxisCounts, fillable: AxisKey[]): AxisKey[] {
+  return fillable.filter((key) => axes[key].den < PERIOD_BUDGET[key]);
 }
 
 /**
@@ -84,6 +105,7 @@ function unfilled(axes: AxisCounts): AxisKey[] {
  * 시점이 섞이면 판독이 안 된다.
  */
 export function segmentIntoPeriods(sessions: SessionForPeriod[]): Period[] {
+  const fillable = fillableAxes(sessions);
   const ordered = [...sessions].sort((a, b) =>
     a.startedAt.localeCompare(b.startedAt),
   );
@@ -113,7 +135,7 @@ export function segmentIntoPeriods(sessions: SessionForPeriod[]): Period[] {
       delivery,
       coverage,
       closedByBudget,
-      unfilledAxes: unfilled(axes),
+      unfilledAxes: unfilled(axes, fillable),
       open,
     });
     axes = emptyAxes();
@@ -145,7 +167,11 @@ export function segmentIntoPeriods(sessions: SessionForPeriod[]): Period[] {
     coverage.opaque += session.metrics.coverage.opaque;
     members.push(session);
 
-    const budgetMet = unfilled(axes).length === 0;
+    // 예산을 채웠어도 세션이 너무 적으면 더 모은다. 세션 하나가 예산을 다 채우는
+    // 코퍼스에서 구간이 세션 1개씩으로 쪼개지는 것을 막는다.
+    const budgetMet =
+      unfilled(axes, fillable).length === 0 &&
+      members.length >= PERIOD_MIN_SESSIONS;
     if (budgetMet) flush(true, false);
     else if (members.length >= PERIOD_SESSION_CAP) flush(false, false);
   }

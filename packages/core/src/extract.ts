@@ -283,6 +283,7 @@ export function extractFacts(
         sourceFile,
         id,
         entry.toolUseResult,
+        block.content,
       );
       toolResults.push(result);
       const tail = extractStdoutTail(entry.toolUseResult, block.content);
@@ -337,11 +338,63 @@ export function extractFacts(
   };
 }
 
+/**
+ * `cat -n` 형식 본문에서 줄 정보를 복원한다.
+ *
+ * subagent 트랜스크립트에는 `toolUseResult` 가 아예 없다. 파일 정보가 담긴 그 객체가
+ * 메인 세션에만 붙어서, Read 결과의 60%(7,805건)가 총 줄 수를 잃고 있었다. 읽기 범위
+ * 규율이 실제 읽기의 절반만 보고 있었다는 뜻이다.
+ *
+ * 다행히 본문이 `   12\t내용` 형식이라 첫 줄과 끝 줄의 번호로 되살릴 수 있다. 총 줄 수는
+ * 알 수 없고(파일 끝까지 읽었는지 모른다) 읽은 범위만 알 수 있어, 끝 줄 번호를 하한으로
+ * 쓴다. 하한이라 부분읽기를 전체읽기로 잘못 볼 위험은 없고 그 반대만 있다.
+ */
+function linesFromNumberedBody(content: unknown): {
+  numLines: number;
+  startLine: number;
+  lastLine: number;
+} | null {
+  const text =
+    typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? content
+            .map((b) =>
+              b !== null && typeof b === "object" && "text" in b
+                ? String((b as { text: unknown }).text)
+                : "",
+            )
+            .join("")
+        : "";
+  if (text === "") return null;
+
+  const rows = text.split("\n");
+  const numbered = /^\s*(\d+)\t/;
+  let first: number | null = null;
+  let last: number | null = null;
+  let count = 0;
+  for (const row of rows) {
+    const m = numbered.exec(row);
+    if (m === null) continue;
+    const n = Number(m[1]);
+    if (!Number.isFinite(n)) continue;
+    first ??= n;
+    last = n;
+    count += 1;
+  }
+  // 번호가 붙은 줄이 태반이어야 Read 본문으로 본다. bash 출력이 우연히 걸리는 것을 막는다.
+  if (first === null || last === null || count < 3 || count * 2 < rows.length) {
+    return null;
+  }
+  return { numLines: count, startLine: first, lastLine: last };
+}
+
 function extractToolResult(
   sessionId: string,
   sourceFile: string,
   uuid: string,
   raw: unknown,
+  blockContent?: unknown,
 ): ToolResultRow {
   const row: ToolResultRow = {
     sessionId,
@@ -354,7 +407,24 @@ function extractToolResult(
     subagentToolCalls: null,
     subagentEditFiles: null,
   };
-  if (raw === null || typeof raw !== "object") return row;
+  // toolUseResult 가 없거나 file 정보가 비면 본문으로 되살린다.
+  //
+  // subagent 트랜스크립트에는 toolUseResult 자체가 없어서 아래 조기 반환에 걸린다.
+  // 그래서 반환 전에 먼저 본문을 본다.
+  const fillFromBody = (): void => {
+    if (row.totalLines !== null || blockContent === undefined) return;
+    const fromBody = linesFromNumberedBody(blockContent);
+    if (fromBody === null) return;
+    row.numLines = fromBody.numLines;
+    row.startLine = fromBody.startLine;
+    // 총 줄 수는 모른다. 끝 줄 번호가 하한이다.
+    row.totalLines = fromBody.lastLine;
+  };
+
+  if (raw === null || typeof raw !== "object") {
+    fillFromBody();
+    return row;
+  }
   const obj = raw as Record<string, unknown>;
 
   const file = obj["file"];
@@ -364,6 +434,8 @@ function extractToolResult(
     row.numLines = num(f["numLines"]);
     row.startLine = num(f["startLine"]);
   }
+
+  fillFromBody();
 
   const kind = obj["type"];
   if (kind === "create" || kind === "update" || kind === "file_unchanged") {

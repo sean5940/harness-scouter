@@ -7,31 +7,31 @@ Turns the Claude Code transcripts sitting on your machine into 6 stats that meas
 What gets measured is the **harness**, not the model. The same model gives different results depending on how the prompts, context, hooks, and skills were put together, and this tool tries to measure that difference.
 
 ```
-  HARNESS SCOUTER  all-time         Lv. 73  B
-  2026-07-02 ~ 2026-08-04 · 355 sessions · 29 history windows · coverage 84%
+  HARNESS SCOUTER  all-time         Lv. 71  B
+  2026-07-02 ~ 2026-08-04 · 349 sessions · 29 history windows · coverage 83%
   ────────────────────────────────────────────────────────────────────────────────
-  Retrieval          █████████████░░░░░░░░░░░  53  C   typical   46~58  best  67
-      File-finding discipline     21   n= 1544
-      Index-first retrieval       47   n= 5106
-      Evidence before edit        92   n= 1658
-  Verification       ████████████████████░░░░  82  A   typical   74~89  best  99
-      Pre-commit check freshness  83   n=  392
-      No redundant checks         80   n= 1807
-  Delivery           █████████████████████░░░  88  A   typical   87~94  best  98
-      Reached an artifact         94   n=  173  (display)
-      No rework                   88   n= 6034
-  Autonomy           ██████████████████████░░  90  S   typical   84~97  best 100
-      No human intervention       90   n=72996
-  Discipline         ████████████████░░░░░░░░  67  B   typical   69~77  best  93
-      Instrumented-channel use    62   n= 9657
-      No repeat gate hits         71   n= 1992
-  Context efficiency ██████████████████░░░░░░  73  B   typical   68~79  best  86
-      Read-scope discipline       81   n= 1050
-      Recall of what was read     93   n=12906
-      Response brevity            54   n=22563
-      Context lightness           66   n=46206
+  Retrieval          █████████████░░░░░░░░░░░  53  C   typical   46~59  best  67
+      File-finding discipline     21   n= 1548
+      Index-first retrieval       46   n= 5114
+      Evidence before edit        92   n= 1684
+  Verification       ███████████████████░░░░░  81  A   typical   74~89  best  99
+      Pre-commit check freshness  84   n=  397
+      No redundant checks         79   n= 2016
+  Delivery           █████████████████████░░░  88  A   typical   87~93  best  98
+      Reached an artifact         94   n=  170  (display)
+      No rework                   88   n= 6123
+  Autonomy           ██████████████████████░░  90  S   typical   85~96  best 100
+      No human intervention       90   n=73629
+  Discipline         ████████████████░░░░░░░░  66  B   typical   70~79  best  93
+      Instrumented-channel use    61   n= 9985
+      No repeat gate hits         70   n= 2015
+  Context efficiency ████████████████░░░░░░░░  68  B   typical   64~72  best  83
+      Read-scope discipline       58   n= 2473
+      Recall of what was read     92   n=12964
+      Response brevity            54   n=22949
+      Context lightness           65   n=47204
   ────────────────────────────────────────────────────────────────────────────────
-  Overall 72.6 · B  (5.4p to the nearest grade cut)
+  Overall 71.2 · B  (6.8p to the nearest grade cut)
   All-time aggregate, so grades come from absolute scores. Drop --all for per-period grades.
 ```
 
@@ -72,7 +72,7 @@ The DB holds **parsed facts only**. No scores.
 | Table           | What it holds                                                       | Rows (sample) |
 | --------------- | ------------------------------------------------------------------- | ------------- |
 | `session`       | Session metadata. Project, branch, model, entry point               | 424           |
-| `tool_call`     | Tool calls. Name, command, file path, whether it was blocked, agent | 57,756        |
+| `tool_call`     | Tool calls. Name, command, file path, whether it was blocked, agent | 60,584        |
 | `tool_result`   | Tool results. Lines read, edit kind, stdout tail                    | 57,748        |
 | `usage`         | Tokens per response. Deduplicated per request                       | 46,241        |
 | `session_event` | Interrupts, queued input, tool denials                              | 4,283         |
@@ -207,8 +207,8 @@ A session that fixed nothing and only repeated index searches really does come o
 A mapping table goes stale sooner or later. So it also measures how much of what is observed the profile covers.
 
 ```
-57,756 tool calls observed
-  mapped to a capability  57,749  100.0%
+60,584 tool calls observed
+  mapped to a capability  60,577  100.0%
   unmapped                     7    0.0%
 ```
 

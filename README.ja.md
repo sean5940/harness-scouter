@@ -7,31 +7,31 @@
 測定の対象はモデルではなく**ハーネス**です。同じモデルを使っても、プロンプト・コンテキスト・フック・スキルをどう組んだかで結果が変わるので、その差を測るためのツールです。
 
 ```
-  HARNESS SCOUTER  all-time         Lv. 73  B
-  2026-07-02 ~ 2026-08-04 · 355 sessions · 29 history windows · coverage 84%
+  HARNESS SCOUTER  all-time         Lv. 71  B
+  2026-07-02 ~ 2026-08-04 · 349 sessions · 29 history windows · coverage 83%
   ────────────────────────────────────────────────────────────────────────────────
-  Retrieval          █████████████░░░░░░░░░░░  53  C   typical   46~58  best  67
-      File-finding discipline     21   n= 1544
-      Index-first retrieval       47   n= 5106
-      Evidence before edit        92   n= 1658
-  Verification       ████████████████████░░░░  82  A   typical   74~89  best  99
-      Pre-commit check freshness  83   n=  392
-      No redundant checks         80   n= 1807
-  Delivery           █████████████████████░░░  88  A   typical   87~94  best  98
-      Reached an artifact         94   n=  173  (display)
-      No rework                   88   n= 6034
-  Autonomy           ██████████████████████░░  90  S   typical   84~97  best 100
-      No human intervention       90   n=72996
-  Discipline         ████████████████░░░░░░░░  67  B   typical   69~77  best  93
-      Instrumented-channel use    62   n= 9657
-      No repeat gate hits         71   n= 1992
-  Context efficiency ██████████████████░░░░░░  73  B   typical   68~79  best  86
-      Read-scope discipline       81   n= 1050
-      Recall of what was read     93   n=12906
-      Response brevity            54   n=22563
-      Context lightness           66   n=46206
+  Retrieval          █████████████░░░░░░░░░░░  53  C   typical   46~59  best  67
+      File-finding discipline     21   n= 1548
+      Index-first retrieval       46   n= 5114
+      Evidence before edit        92   n= 1684
+  Verification       ███████████████████░░░░░  81  A   typical   74~89  best  99
+      Pre-commit check freshness  84   n=  397
+      No redundant checks         79   n= 2016
+  Delivery           █████████████████████░░░  88  A   typical   87~93  best  98
+      Reached an artifact         94   n=  170  (display)
+      No rework                   88   n= 6123
+  Autonomy           ██████████████████████░░  90  S   typical   85~96  best 100
+      No human intervention       90   n=73629
+  Discipline         ████████████████░░░░░░░░  66  B   typical   70~79  best  93
+      Instrumented-channel use    61   n= 9985
+      No repeat gate hits         70   n= 2015
+  Context efficiency ████████████████░░░░░░░░  68  B   typical   64~72  best  83
+      Read-scope discipline       58   n= 2473
+      Recall of what was read     92   n=12964
+      Response brevity            54   n=22949
+      Context lightness           65   n=47204
   ────────────────────────────────────────────────────────────────────────────────
-  Overall 72.6 · B  (5.4p to the nearest grade cut)
+  Overall 71.2 · B  (6.8p to the nearest grade cut)
   All-time aggregate, so grades come from absolute scores. Drop --all for per-period grades.
 ```
 
@@ -72,7 +72,7 @@ DB には**パースした事実だけ**が入ります。スコアはありま�
 | テーブル        | 入れるもの                                                               | 行数(例) |
 | --------------- | ------------------------------------------------------------------------ | -------- |
 | `session`       | セッションメタ。プロジェクト・ブランチ・モデル・エントリポイント         | 424      |
-| `tool_call`     | ツール呼び出し。名前・コマンド・ファイルパス・ブロック有無・エージェント | 57,756   |
+| `tool_call`     | ツール呼び出し。名前・コマンド・ファイルパス・ブロック有無・エージェント | 60,584   |
 | `tool_result`   | ツール結果。読んだ行数・編集の種類・stdout の末尾                        | 57,748   |
 | `usage`         | 応答ごとのトークン。リクエスト単位で重複排除                             | 46,241   |
 | `session_event` | 中断・キュー割り込み・ツール拒否                                         | 4,283    |
@@ -207,8 +207,8 @@ $ scouter status --lang klingon
 マッピング表はいつでも古くなります。そのため、プロファイルが観測をどれだけ覆っているかも一緒に測ります。
 
 ```
-観測したツール呼び出し 57,756件
-  能力にマッピング済み  57,749  100.0%
+観測したツール呼び出し 60,584件
+  能力にマッピング済み  60,577  100.0%
   未マッピング               7    0.0%
 ```
 

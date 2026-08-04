@@ -33,6 +33,7 @@ import {
   renderDiagnosisHtml,
   defaultDbPath,
   defaultTranscriptRoot,
+  PERIOD_MIN_SESSIONS,
   scan,
   ScouterDb,
   L,
@@ -348,6 +349,25 @@ async function main(): Promise<void> {
     "There is no closed period. Run scouter scan first.",
   );
 
+  /**
+   * 왜 구간이 없는지를 나눠 말한다.
+   *
+   * 스캔을 이미 돌렸는데도 "스캔하세요"가 나오면 같은 명령을 다시 치게 된다. 실제로 다른
+   * 기계에서 그 일이 일어났다. 세션이 있는데 구간이 안 닫힌 것과 세션 자체가 없는 것은
+   * 해야 할 일이 다르므로 화면에서 갈라야 한다.
+   */
+  const noPeriodReason = (
+    sessionCount: number,
+    openSessions: number,
+  ): string => {
+    if (sessionCount === 0) return runScanFirst;
+    return say(
+      lang,
+      `닫힌 구간이 없습니다. 세션 ${sessionCount}개를 읽었지만 구간 하나를 닫으려면 세션이 ${PERIOD_MIN_SESSIONS}개 이상 필요하고 지금 ${openSessions}개입니다. 더 쓰신 뒤 다시 보세요.\n지금 볼 수 있는 것: scouter periods · scouter gate · scouter json`,
+      `There is no closed period. ${sessionCount} sessions were read, but closing one needs at least ${PERIOD_MIN_SESSIONS} sessions and the open one has ${openSessions}. Come back after more sessions.\nWhat works now: scouter periods · scouter gate · scouter json`,
+    );
+  };
+
   // 명령 없이 플래그만 준 호출은 command 가 "help" 라, 버전을 먼저 봐야 `--version` 이
   // 사용법에 먹히지 않는다.
   if (command === "version" || flags.has("version")) {
@@ -428,7 +448,10 @@ async function main(): Promise<void> {
     const closed = result.periods.filter((p) => !p.open);
     const current = flags.has("all") ? mergePeriods(closed) : closed.at(-1);
     if (current === undefined || current === null) {
-      process.stdout.write(`${runScanFirst}\n`);
+      const open = result.periods.find((p) => p.open);
+      process.stdout.write(
+        `${noPeriodReason(result.sessions.length, open?.sessionIds.length ?? 0)}\n`,
+      );
       db.close();
       return;
     }
@@ -539,7 +562,10 @@ async function main(): Promise<void> {
     const project = flags.get("project");
     const result = analyze(db, project !== undefined ? { project } : {});
     if (result.latestClosed === null) {
-      process.stdout.write(`${runScanFirst}\n`);
+      const open = result.periods.find((p) => p.open);
+      process.stdout.write(
+        `${noPeriodReason(result.sessions.length, open?.sessionIds.length ?? 0)}\n`,
+      );
       db.close();
       return;
     }
