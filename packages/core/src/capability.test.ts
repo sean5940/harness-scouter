@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  availableCapabilities,
+  AXIS_REQUIRES,
+  axisMeasurable,
   CLAUDE_CODE_PROFILE,
   createResolver,
   measureCoverage,
   MIN_COVERAGE_TO_SCORE,
   type Capability,
+  type HarnessProfile,
 } from "./capability.js";
+import { L } from "./i18n.js";
 import {
   CONTENT_SCAN_TOOLS,
   FILE_FIND_TOOLS,
@@ -138,5 +143,65 @@ describe("프로필 우선순위", () => {
   it("조회 패턴이 검색 패턴보다 먼저다", () => {
     // 순서가 뒤집히면 `qmd get` 이 검색으로 잡혀 분모 크레딧이 새어 나간다.
     expect(capOf("mcp__qmd__get")).toBe("index-fetch");
+  });
+});
+
+describe("능력이 없으면 0 이 아니라 판정 불가", () => {
+  // 이 절이 이 파일의 두 번째 목적이다. 이름 대응만으로는 "없어서 0"과 "안 써서 0"이
+  // 구별되지 않아 남의 하네스를 재는 순간 거짓말이 된다.
+  it("Claude Code 는 네 축을 모두 잰다", () => {
+    const have = availableCapabilities(CLAUDE_CODE_PROFILE);
+    for (const axis of Object.keys(AXIS_REQUIRES)) {
+      expect(axisMeasurable(axis, have)).toBe(true);
+    }
+  });
+
+  it("인덱스 도구가 없으면 인덱스 축을 재지 않는다", () => {
+    const noIndex: HarnessProfile = {
+      ...CLAUDE_CODE_PROFILE,
+      toolPatterns: [],
+      shellCommands: [],
+    };
+    const have = availableCapabilities(noIndex);
+    expect(have.has("index-search")).toBe(false);
+    expect(axisMeasurable("indexedRetrieval", have)).toBe(false);
+    // 나머지 축은 그대로 잰다. 능력 하나가 빠졌다고 전부 못 재는 것이 아니다.
+    expect(axisMeasurable("readScope", have)).toBe(true);
+  });
+
+  it("셸만 있는 하네스는 계측 채널 축을 재지 않는다", () => {
+    const shellOnly: HarnessProfile = {
+      id: "shell-only",
+      label: L("셸 전용", "Shell only"),
+      tools: { run: "shell" },
+      toolPatterns: [],
+      shellCommands: [],
+    };
+    const have = availableCapabilities(shellOnly);
+    expect(axisMeasurable("instrumentedChannel", have)).toBe(false);
+    expect(axisMeasurable("readScope", have)).toBe(false);
+  });
+
+  it("선언이 있으면 매핑보다 선언을 믿는다", () => {
+    // 도구는 있는데 환경 때문에 못 쓰는 경우가 있다. 그때 직접 적는다.
+    const declared: HarnessProfile = {
+      ...CLAUDE_CODE_PROFILE,
+      declaredCapabilities: ["file-read", "file-edit", "shell"],
+    };
+    const have = availableCapabilities(declared);
+    expect(axisMeasurable("instrumentedChannel", have)).toBe(true);
+    expect(axisMeasurable("indexedRetrieval", have)).toBe(false);
+  });
+
+  it("other 는 능력으로 세지 않는다", () => {
+    // 축이 보지 않는 도구라 있어도 축을 성립시키지 못한다.
+    const onlyOther: HarnessProfile = {
+      id: "x",
+      label: L("x", "x"),
+      tools: { TodoWrite: "other" },
+      toolPatterns: [],
+      shellCommands: [],
+    };
+    expect(availableCapabilities(onlyOther).size).toBe(0);
   });
 });

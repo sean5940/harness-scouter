@@ -11,6 +11,12 @@ import {
 import { emptyEvents, emptyUsage, type Period } from "./periods.js";
 import { COMPONENT_CRITERIA } from "./growth.js";
 import { L, type Localized } from "./i18n.js";
+import {
+  availableCapabilities,
+  axisMeasurable,
+  CLAUDE_CODE_PROFILE,
+  type Capability,
+} from "./capability.js";
 
 /**
  * 탐색력을 세 구성요소로 나눈 이유.
@@ -98,6 +104,14 @@ export interface StatComponent {
    * 구간이 하나뿐인 계산에서는 낼 수 없어 null 이다.
    */
   reliability?: number | null;
+  /**
+   * 점수에 넣지 않고 보여주기만 하는가.
+   *
+   * 값이 거의 상수인 구성요소를 평균에 넣으면 "잘한다"가 아니라 "거의 항상 그렇다"를
+   * 점수로 바꾼다. 그러면 그 스탯이 실제로는 나머지 구성요소만으로 움직이는데 화면은
+   * 여러 개를 재는 것처럼 보인다. 값은 계속 내되 평균에서만 뺀다.
+   */
+  displayOnly?: boolean;
 }
 
 export interface StatValue {
@@ -210,6 +224,7 @@ function inverse(value: number | null): number | null {
 /** 구성요소의 평균. 값이 없는 구성요소는 빼고 낸다. */
 function meanOf(components: StatComponent[]): number | null {
   const values = components
+    .filter((c) => c.displayOnly !== true)
     .map((c) => c.value)
     .filter((v): v is number => v !== null);
   if (values.length === 0) return null;
@@ -220,20 +235,44 @@ function component(
   key: ComponentKey,
   value: number | null,
   denominator: number,
+  displayOnly = false,
 ): StatComponent {
-  return { key, label: COMPONENT_LABELS[key], value, denominator };
+  return {
+    key,
+    label: COMPONENT_LABELS[key],
+    value,
+    denominator,
+    ...(displayOnly ? { displayOnly: true } : {}),
+  };
 }
 
-export function computeStats(period: Period): StatValue[] {
+export function computeStats(
+  period: Period,
+  available: ReadonlySet<Capability> = availableCapabilities(
+    CLAUDE_CODE_PROFILE,
+  ),
+): StatValue[] {
   const a = period.axes;
   const e = period.extras;
+
+  /**
+   * 능력이 없는 하네스에서는 그 축을 0 이 아니라 판정 불가로 낸다.
+   *
+   * 분모가 0 이 아니어도 마찬가지다. 인덱스 도구가 없어도 grep 이 분모를 채우므로
+   * 분모만 보면 "없다"를 못 읽고 "있는데 안 썼다"로 잘못 읽는다.
+   */
+  const scoreIfMeasurable = (
+    axis: Parameters<typeof axisScore>[0],
+    count: AxisCount,
+  ): number | null =>
+    axisMeasurable(axis, available) ? axisScore(axis, count) : null;
 
   const byKey: Record<StatKey, StatComponent[]> = {
     retrieval: [
       component("fileFind", ratio(e.fileFind), e.fileFind.den),
       component(
         "indexedRetrieval",
-        axisScore("indexedRetrieval", a.indexedRetrieval),
+        scoreIfMeasurable("indexedRetrieval", a.indexedRetrieval),
         a.indexedRetrieval.den,
       ),
       component("groundedEdit", ratio(e.groundedEdit), e.groundedEdit.den),
@@ -241,12 +280,12 @@ export function computeStats(period: Period): StatValue[] {
     context: [
       component(
         "readScope",
-        axisScore("readScope", a.readScope),
+        scoreIfMeasurable("readScope", a.readScope),
         a.readScope.den,
       ),
       component(
         "readRevisit",
-        axisScore("readRevisit", a.readRevisit),
+        scoreIfMeasurable("readRevisit", a.readRevisit),
         a.readRevisit.den,
       ),
       component(
@@ -263,12 +302,12 @@ export function computeStats(period: Period): StatValue[] {
     verification: [
       component(
         "verificationFreshness",
-        axisScore("verificationFreshness", a.verificationFreshness),
+        scoreIfMeasurable("verificationFreshness", a.verificationFreshness),
         a.verificationFreshness.den,
       ),
       component(
         "verificationRedundancy",
-        axisScore("verificationRedundancy", a.verificationRedundancy),
+        scoreIfMeasurable("verificationRedundancy", a.verificationRedundancy),
         a.verificationRedundancy.den,
       ),
     ],
@@ -276,19 +315,29 @@ export function computeStats(period: Period): StatValue[] {
       component("humanIntervention", autonomyScore(period), e.assistantTurns),
     ],
     delivery: [
+      // 산출물 도달은 보여주기만 하고 점수에 넣지 않는다.
+      //
+      // 실측 94%(162/173) 라 등수를 못 매긴다. PR 결과를 외부 준거로 쓰려다 머지율 89% 를
+      // "변별력 없음"으로 기각했는데, 같은 이유가 이 구성요소에 그대로 해당한다.
+      //
+      // 그리고 커밋의 존재는 하네스 속성이 아니라 그날 한 일의 성격이다. 기획·조사·리뷰
+      // 세션은 커밋 없이 끝나는 것이 정상인데 그것이 깎인다. 빈 커밋 하나로 오르기도 한다.
+      //
+      // 값은 계속 낸다. 코드를 고치고 아무 데도 안 닿은 11건은 볼 값어치가 있다.
       component(
         "deliveryReach",
         period.delivery.den < MIN_DELIVERY_SESSIONS
           ? null
           : ratio(period.delivery),
         period.delivery.den,
+        true,
       ),
       component("rework", inverse(ratio(e.rework)), e.rework.den),
     ],
     discipline: [
       component(
         "instrumentedChannel",
-        axisScore("instrumentedChannel", a.instrumentedChannel),
+        scoreIfMeasurable("instrumentedChannel", a.instrumentedChannel),
         a.instrumentedChannel.den,
       ),
       component("gateRepeat", inverse(ratio(e.gateRepeat)), e.gateRepeat.den),

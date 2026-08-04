@@ -62,6 +62,66 @@ export interface HarnessProfile {
    * 같은 일을 한 것인데, 셸 쪽을 안 보면 실사용량의 300분의 1만 세게 된다.
    */
   shellCommands: ToolPattern[];
+  /**
+   * 이 하네스가 실제로 가진 능력.
+   *
+   * 이름 대응만으로는 부족하다. 인덱스 검색 도구가 아예 없는 하네스를 재면 분자가 0 이고
+   * 분모는 grep 으로 채워져 0 점이 나오는데, 그것은 "있는데 안 썼다"가 아니라 "없다"이다.
+   * 두 경우가 화면에서 같아 보이면 남의 하네스를 재는 순간 거짓말이 된다.
+   *
+   * 선언에서 빠진 능력에 기대는 축은 0 이 아니라 **판정 불가**로 낸다. 게이트 재발 없음이
+   * 훅 없는 하네스에서 만점이 아니라 판정 불가인 것과 같은 처리다.
+   *
+   * 비워 두면 `tools`·`toolPatterns`·`shellCommands` 에 나타난 능력을 가진 것으로 본다.
+   * 대부분의 프로필은 그것으로 충분하고, 도구는 있는데 쓸 수 없는 환경에서만 직접 적는다.
+   */
+  declaredCapabilities?: Capability[];
+}
+
+/**
+ * 프로필이 실제로 도달할 수 있는 능력의 집합.
+ *
+ * 선언이 있으면 그것을, 없으면 매핑에 나타난 것을 쓴다. `other` 는 축이 보지 않으므로 뺀다.
+ */
+export function availableCapabilities(
+  profile: HarnessProfile,
+): Set<Capability> {
+  if (profile.declaredCapabilities !== undefined) {
+    return new Set(profile.declaredCapabilities);
+  }
+  const found = new Set<Capability>();
+  for (const c of Object.values(profile.tools)) found.add(c);
+  for (const p of profile.toolPatterns) found.add(p.capability);
+  for (const p of profile.shellCommands) found.add(p.capability);
+  found.delete("other");
+  return found;
+}
+
+/**
+ * 축이 성립하려면 어떤 능력이 있어야 하는가.
+ *
+ * 여기 적힌 능력이 프로필에 없으면 그 축은 점수를 내지 않는다. 분모가 0 이 아니어도
+ * 마찬가지다. 분모는 대체 경로(grep·bash)로 채워지므로 분모만 보면 능력 부재를 못 읽는다.
+ */
+export const AXIS_REQUIRES: Record<string, Capability[]> = {
+  // 인덱스 검색 도구가 없으면 "인덱스를 먼저 쓰는가"는 물을 수 없는 질문이다.
+  indexedRetrieval: ["index-search"],
+  // 계측 채널 준수는 계측 경로와 셸 경로가 둘 다 있어야 성립한다. 셸만 있는 하네스에서는
+  // 모든 파일 접근이 off-channel 이 되어 구조적으로 0 이 나온다.
+  instrumentedChannel: ["file-read", "file-edit", "shell"],
+  // 범위를 지정할 수 있는 읽기 도구가 있어야 "범위를 지정했나"를 묻는다.
+  readScope: ["file-read"],
+  readRevisit: ["file-read"],
+};
+
+/** 이 축을 이 프로필로 잴 수 있는가. */
+export function axisMeasurable(
+  axis: string,
+  available: ReadonlySet<Capability>,
+): boolean {
+  const required = AXIS_REQUIRES[axis];
+  if (required === undefined) return true;
+  return required.every((c) => available.has(c));
 }
 
 /**
