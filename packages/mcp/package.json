@@ -1,13 +1,13 @@
 {
   "name": "@harness-scouter/mcp",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "bin": {
     "scouter-mcp": "./dist/index.js"
   },
   "dependencies": {
-    "@harness-scouter/core": "0.0.1"
+    "@harness-scouter/core": "0.1.0"
   },
   "scripts": {
     "build": "tsc --build"

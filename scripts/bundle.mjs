@@ -74,6 +74,15 @@ collect(ENTRY);
 // 각 모듈을 함수로 감싸 이름 충돌을 막는다. 최소한의 CJS 로더를 앞에 둔다.
 const parts = [
   "'use strict';",
+  // node:sqlite 가 실행마다 실험 기능 경고를 stderr 로 낸다. 개발 중에는 정보이지만
+  // 배포본에서는 쓰는 사람이 손댈 수 없는 노이즈다. 이 경고만 지우고 나머지는 남긴다.
+  //
+  // 리스너를 더하기만 하면 Node 의 기본 리스너가 그대로 출력하므로 먼저 지운다.
+  "process.removeAllListeners('warning');",
+  "process.on('warning', (w) => {",
+  "  if (w.name === 'ExperimentalWarning' && /SQLite/.test(w.message)) return;",
+  "  console.error(w.stack ?? String(w));",
+  "});",
   "const __mods = {};",
   "const __cache = {};",
   "function __req(id) {",

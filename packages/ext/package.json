@@ -1,24 +1,28 @@
 {
   "name": "harness-scouter-vscode",
   "displayName": "Harness Scouter",
-  "description": "Claude Code 트랜스크립트에서 하네스 설계 품질을 측정한다",
-  "version": "0.0.1",
+  "description": "Claude Code \ud2b8\ub79c\uc2a4\ud06c\ub9bd\ud2b8\uc5d0\uc11c \ud558\ub124\uc2a4 \uc124\uacc4 \ud488\uc9c8\uc744 \uce21\uc815\ud55c\ub2e4",
+  "version": "0.1.0",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
   },
-  "categories": ["Other"],
-  "activationEvents": ["onStartupFinished"],
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "harnessScouter.showPanel",
-        "title": "Harness Scouter: 육각형 리포트 열기"
+        "title": "Harness Scouter: \uc721\uac01\ud615 \ub9ac\ud3ec\ud2b8 \uc5f4\uae30"
       },
       {
         "command": "harnessScouter.scan",
-        "title": "Harness Scouter: 트랜스크립트 스캔"
+        "title": "Harness Scouter: \ud2b8\ub79c\uc2a4\ud06c\ub9bd\ud2b8 \uc2a4\uce94"
       }
     ],
     "configuration": {
@@ -27,22 +31,22 @@
         "harnessScouter.nodePath": {
           "type": "string",
           "default": "node",
-          "description": "CLI를 실행할 node 경로. Extension Host가 아니라 자식 프로세스에서 돌린다."
+          "description": "CLI\ub97c \uc2e4\ud589\ud560 node \uacbd\ub85c. Extension Host\uac00 \uc544\ub2c8\ub77c \uc790\uc2dd \ud504\ub85c\uc138\uc2a4\uc5d0\uc11c \ub3cc\ub9b0\ub2e4."
         },
         "harnessScouter.cliPath": {
           "type": "string",
           "default": "",
-          "description": "scouter CLI의 dist/index.js 경로. 비우면 확장 설치 위치 기준으로 찾는다."
+          "description": "scouter CLI\uc758 dist/index.js \uacbd\ub85c. \ube44\uc6b0\uba74 \ud655\uc7a5 \uc124\uce58 \uc704\uce58 \uae30\uc900\uc73c\ub85c \ucc3e\ub294\ub2e4."
         },
         "harnessScouter.dbPath": {
           "type": "string",
           "default": "",
-          "description": "SQLite 파일 경로. 비우면 홈 디렉토리 아래 기본값을 쓴다."
+          "description": "SQLite \ud30c\uc77c \uacbd\ub85c. \ube44\uc6b0\uba74 \ud648 \ub514\ub809\ud1a0\ub9ac \uc544\ub798 \uae30\ubcf8\uac12\uc744 \uc4f4\ub2e4."
         },
         "harnessScouter.scanOnStartup": {
           "type": "boolean",
           "default": false,
-          "description": "확장이 켜질 때 증분 스캔을 한 번 돌린다."
+          "description": "\ud655\uc7a5\uc774 \ucf1c\uc9c8 \ub54c \uc99d\ubd84 \uc2a4\uce94\uc744 \ud55c \ubc88 \ub3cc\ub9b0\ub2e4."
         }
       }
     }
