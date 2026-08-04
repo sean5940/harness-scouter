@@ -309,7 +309,7 @@ export const COMPONENT_CRITERIA: Record<string, ComponentCriterion> = {
   },
   "응답 간결성": {
     measures:
-      "읽기·편집 호출 한 번당 생성한 출력 토큰. 500토큰이 만점, 4,000토큰이 0점이다. 분모는 Read·Edit·Write 계열만 세고 Bash·검색은 빠진다.",
+      "읽기·편집 호출 한 번당 생성한 출력 토큰. 1,000토큰이 만점, 4,500토큰이 0점이다. 분모는 Read·Edit·Write 계열만 세고 Bash·검색은 빠진다.",
     whyItMatters:
       "같은 일을 하면서 길게 생성하면 비용과 지연이 함께 늘고, 읽는 사람의 부담도 커진다.",
     objective: "directional",
