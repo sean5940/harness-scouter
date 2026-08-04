@@ -142,7 +142,25 @@ for (const lang of ["en", "ja"]) {
   );
 }
 
-// 6. availableCapabilities 가 Claude Code 에서 축을 다 재는가.
+// 6. 번역본의 절 구조가 원문과 같은가.
+//
+//    번역 에이전트가 새 절을 엉뚱한 자리에 넣어도 수치 검사는 통과한다. 숫자는 다 있고
+//    자리만 틀렸기 때문이다. 실제로 그렇게 한 번 어긋났다.
+const headingCount = (text) =>
+  (text.match(/^#{2,3} /gm) ?? []).length;
+const srcHeadings = headingCount(readme);
+for (const lang of ["en", "ja"]) {
+  const path = join(ROOT, `README.${lang}.md`);
+  if (!existsSync(path)) continue;
+  const n = headingCount(readFileSync(path, "utf8"));
+  check(
+    n === srcHeadings,
+    `README.${lang}.md 절 개수`,
+    `${n} 대 ${srcHeadings}`,
+  );
+}
+
+// 7. availableCapabilities 가 Claude Code 에서 축을 다 재는가.
 const { AXIS_REQUIRES, axisMeasurable } = await import(
   join(ROOT, "packages/core/dist/capability.js")
 );
