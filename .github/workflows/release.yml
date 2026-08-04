@@ -25,7 +25,8 @@ jobs:
         include:
           - os: macos-14
             target: darwin-arm64
-          - os: macos-13
+          # macos-13 은 퇴역 예정이라 큐가 30분을 넘긴다. macos-15-intel 이 같은 x64 를 낸다.
+          - os: macos-15-intel
             target: darwin-x64
           - os: ubuntu-latest
             target: linux-x64
