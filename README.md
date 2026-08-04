@@ -134,17 +134,17 @@ $ scouter status --lang klingon
 
 지표는 도구 이름이 아니라 **능력**으로 정의돼 있습니다. 다른 하네스를 재려면 이름에서 능력으로 가는 매핑 하나만 채우면 됩니다.
 
-| 능력 | Claude Code | 무엇을 재는가 |
-|---|---|---|
-| `file-find` | `Glob` | 파일 경로 찾기 |
-| `content-search` | `Grep` | 내용 전수 스캔 |
-| `index-search` | qmd · graphify (도구·**셸 CLI 모두**) | 인덱스 기반 검색 |
-| `index-fetch` | `qmd get` 계열 | 이미 아는 문서 꺼내기 |
-| `file-read` | `Read` | 파일 읽기 |
-| `file-edit` | `Edit` · `Write` · `MultiEdit` | 파일 고치기 |
-| `shell` | `Bash` | 셸 실행 |
-| `subagent` | `Agent` · `Task` | 위임 |
-| `other` | `TodoWrite` · `AskUserQuestion` 등 | 축이 보지 않음. **모르는 것과 구별하려고 명시** |
+| 능력             | Claude Code                           | 무엇을 재는가                                   |
+| ---------------- | ------------------------------------- | ----------------------------------------------- |
+| `file-find`      | `Glob`                                | 파일 경로 찾기                                  |
+| `content-search` | `Grep`                                | 내용 전수 스캔                                  |
+| `index-search`   | qmd · graphify (도구·**셸 CLI 모두**) | 인덱스 기반 검색                                |
+| `index-fetch`    | `qmd get` 계열                        | 이미 아는 문서 꺼내기                           |
+| `file-read`      | `Read`                                | 파일 읽기                                       |
+| `file-edit`      | `Edit` · `Write` · `MultiEdit`        | 파일 고치기                                     |
+| `shell`          | `Bash`                                | 셸 실행                                         |
+| `subagent`       | `Agent` · `Task`                      | 위임                                            |
+| `other`          | `TodoWrite` · `AskUserQuestion` 등    | 축이 보지 않음. **모르는 것과 구별하려고 명시** |
 
 **셸 칸이 핵심입니다.** 도구로 부르든 셸로 부르든 같은 일을 한 것인데, 셸을 안 보면 실사용량을 통째로 놓칩니다. 이 저장소에서 graphify CLI 호출 1,220건을 4건으로 본 적이 있습니다. 실사용량의 300분의 1입니다.
 
@@ -228,6 +228,38 @@ npm run scouter -- outcomes     # PR 결과와 신호 변별력 (gh 필요)
 npm run scouter -- periods      # 구간 목록
 npm run scouter -- json         # 확장이 읽을 JSON
 ```
+
+## 에이전트가 직접 조회하기 (MCP)
+
+에이전트가 **세션 중에** 자기 하네스 품질을 읽을 수 있습니다. 사람이 사후에 보는 대시보드와 달리 행동 시점에 닿습니다.
+
+`.mcp.json`이나 Claude Code 설정에 넣습니다.
+
+```json
+{
+  "mcpServers": {
+    "harness-scouter": {
+      "command": "node",
+      "args": ["/path/to/harness-scouter/packages/mcp/dist/index.js"],
+      "env": { "SCOUTER_LANG": "en" }
+    }
+  }
+}
+```
+
+| 도구              | 내는 것                                       |
+| ----------------- | --------------------------------------------- |
+| `scouter_status`  | 지금 능력치와 구성요소별 점수                 |
+| `scouter_guide`   | 낮은 능력치를 올리는 행동 · **안티패턴 포함** |
+| `scouter_diag`    | 어디서 새는지 (근거 세션 포함)                |
+| `scouter_harness` | 센서·가이드 인벤토리와 동기화 검사            |
+| `scouter_gate`    | 어느 축이 어느 화면을 뒷받침하는가            |
+
+**전부 읽기 전용입니다.** 라벨 쓰기나 DB 수정은 노출하지 않습니다.
+
+`scouter_guide`가 안티패턴을 **같은 응답에** 싣는 것은 의도한 설계입니다. 자기 점수를 보면서 점수를 올리려는 순간 조작 유인이 생기는데, 점수만 오르고 품질은 안 오르는 처방을 나란히 놓아야 그게 행동 시점에 보입니다.
+
+SDK 없이 stdio JSON-RPC를 직접 다뤄 **런타임 의존성이 없습니다.**
 
 ## 화면 읽는 법
 
