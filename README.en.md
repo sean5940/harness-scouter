@@ -409,18 +409,40 @@ Prior hypotheses against measurement (written down before looking at the data)
 
 When the axis nailed down as unrelated ranks 1st, that is not a finding, that is noise.
 
-### 2. Reproducibility gate 2/6 — scoring the odd and even halves
+### 2. Reproducibility gate 2/6 · 1/6 — scoring the odd and even halves
 
 A period holds about 14 sessions. They are split at random into two groups of 7 and scored separately. **It is the same period, so the two scores should come out close** (the way scoring a test's odd questions and even questions separately still shows the same ability).
 
-On 4 of the 6 axes they are not close. That means the period score reflects **"which sessions happened to land in this period"** rather than "I did well in this stretch".
+On 5 of the 6 axes they are not close. That means the period score reflects **"which sessions happened to land in this period"** rather than "I did well in this stretch".
 
 | Screen      | Axes that hold up | Why                                                                      |
 | ----------- | ----------------- | ------------------------------------------------------------------------ |
 | All periods | 2/6               | Every period is merged, so reproducibility within a period is not needed |
-| Per period  | 2/6               | Scores have to reproduce inside a period, and 4 axes fall short          |
+| Per period  | 1/6               | Scores have to reproduce inside a period, and 5 axes fall short          |
 
 Growing the period 2x, 3x, and 4x did not help. The cause looks less like "too few samples" and more like **the work differing too much from session to session**. It amounts to putting a refactoring session, a bug-fix session, and a documentation session in one bucket and taking the average.
+
+Instead of reading a single split, the tool reads **the distribution of 400 random two-way splits**. With 14 sessions in a period there are 1,716 possible splits, and picking one of them to decide by lets luck settle the verdict.
+
+That is what happened. Index-first search passed at 0.505 on a single split, but **the permutation median is 0.264**. It was one lucky split, and that is why support for the per-period screen dropped from 2/6 to 1/6.
+
+### Shortfalls come with a prescription
+
+Every axis is a `numerator/denominator`, so the observed wobble can be separated into **real difference** and **sampling noise**.
+
+```
+Axis                           Signal/noise   Denominator for 0.5 reliability   Current budget
+Instrumented channel use              11.69                                 3               20
+Index-first search                     5.37                                 4               10
+Read range discipline                  0.86                                 6               10
+Read round-trip restraint              0.62                                64               20
+Verification spin restraint            0.40                                23               10
+Verification freshness                 0.35                                 7               10
+```
+
+**The axes that pass the gate are exactly the top two by signal/noise.** Two different methods gave the same answer.
+
+And a shortfall turns into a prescription. `Read round-trip restraint` needs a denominator of 64 for reliability 0.5, and the budget is 20. It is not "this does not reproduce", it is "the budget is three times too small".
 
 ### 3. Predictive power across periods is 0 — not skill, just the day's form
 
