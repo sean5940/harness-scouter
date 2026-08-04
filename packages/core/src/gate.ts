@@ -1,5 +1,6 @@
 import { AXIS_ORDER, PERIOD_BUDGET, type AxisKey } from "./definitions.js";
 import { L, t, type Lang, type Localized } from "./i18n.js";
+import { decomposeVariance, signalToNoise } from "./variance.js";
 import { axisScore, type AxisCounts, type SessionMetrics } from "./metrics.js";
 import {
   segmentIntoPeriods,
@@ -23,7 +24,8 @@ export type GateCheckKey =
   | "length-confound"
   | "gaming-shift"
   | "ceiling-unreachable"
-  | "denominator-survival";
+  | "denominator-survival"
+  | "variance-components";
 
 export interface GateCheck {
   /**
@@ -191,6 +193,109 @@ function splitHalfScores(
     }
   }
   return { first, second };
+}
+
+/** 시드 고정 난수. 분할이 실행마다 갈리면 판정이 재현되지 않는다. */
+function seededRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 0x100000000;
+  };
+}
+
+/**
+ * 순열 split-half.
+ *
+ * 초판은 세션 아이디 해시로 분할을 하나 고정했다. 위치 기반 분할이 배치의 규칙성을
+ * 상관으로 잡던 것을 고친 것은 옳았지만, 해법이 "무작위 분할 하나"가 아니라 "무작위
+ * 분할 전부의 분포"였어야 했다. 구간에 세션이 14개면 가능한 이분할이 1,716가지라
+ * 그중 하나만 보고 미달을 판정하고 있었다.
+ *
+ * 실제로 읽기 왕복 절제가 -0.257 로 나왔는데 분산 성분은 신뢰도 0.5 를 넘길 분모가
+ * 충분하다고 말했다. 둘 중 하나가 틀렸고, 분포를 보면 어느 쪽인지 알 수 있다.
+ *
+ * 부산물이 더 크다. 두 반쪽 차이의 분포에서 검출하한이 나온다. "직전 구간 대비 변화를
+ * 표시하지 않는다"가 "이 축은 N 점 미만이면 표시하지 않는다"로 바뀐다.
+ */
+export interface SplitHalfDistribution {
+  /** 순열 상관의 중앙값. 판정은 이것으로 한다. */
+  median: number;
+  /** 5·95 백분위. 분할 운의 폭이다. */
+  low: number;
+  high: number;
+  /** 돌린 순열 수. */
+  permutations: number;
+  /**
+   * 두 반쪽 차이 절대값의 95백분위.
+   *
+   * 같은 구간을 두 번 재도 이만큼은 갈린다는 뜻이라, 이보다 작은 구간 간 차이는
+   * 측정 잡음과 구별되지 않는다. 0~1 스케일이다.
+   */
+  detectionFloor: number;
+}
+
+const SPLIT_HALF_PERMUTATIONS = 400;
+
+export function permutedSplitHalf(
+  periods: Period[],
+  bySession: Map<string, SessionMetrics>,
+  axis: AxisKey,
+  seed: number,
+): SplitHalfDistribution | null {
+  const usable = periods.filter(
+    (p) => p.sessionIds.length >= MIN_SESSIONS_FOR_SPLIT_HALF,
+  );
+  if (usable.length < 3) return null;
+
+  const rand = seededRandom(seed);
+  const correlations: number[] = [];
+  const gaps: number[] = [];
+
+  for (let iter = 0; iter < SPLIT_HALF_PERMUTATIONS; iter += 1) {
+    const first: number[] = [];
+    const second: number[] = [];
+    for (const period of usable) {
+      // 비복원 이분할. Fisher-Yates 로 섞어 앞 절반과 뒤 절반으로 가른다.
+      const ids = [...period.sessionIds];
+      for (let i = ids.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(rand() * (i + 1));
+        const tmp = ids[i] as string;
+        ids[i] = ids[j] as string;
+        ids[j] = tmp;
+      }
+      const half = Math.floor(ids.length / 2);
+      const a: AxisCounts["readScope"] = { num: 0, den: 0 };
+      const b: AxisCounts["readScope"] = { num: 0, den: 0 };
+      ids.forEach((sid, i) => {
+        const metrics = bySession.get(sid);
+        if (metrics === undefined) return;
+        const target = i < half ? a : b;
+        target.num += metrics.axes[axis].num;
+        target.den += metrics.axes[axis].den;
+      });
+      const sa = axisScore(axis, a);
+      const sb = axisScore(axis, b);
+      if (sa !== null && sb !== null) {
+        first.push(sa);
+        second.push(sb);
+        gaps.push(Math.abs(sa - sb));
+      }
+    }
+    const r = pearson(first, second);
+    if (!Number.isNaN(r)) correlations.push(r);
+  }
+
+  if (correlations.length === 0) return null;
+  const sorted = [...correlations].sort((x, y) => x - y);
+  const sortedGaps = [...gaps].sort((x, y) => x - y);
+  return {
+    median: quantile(sorted, 0.5),
+    low: quantile(sorted, 0.05),
+    high: quantile(sorted, 0.95),
+    permutations: correlations.length,
+    detectionFloor: quantile(sortedGaps, 0.95),
+  };
 }
 
 export interface GamingScenario {
@@ -540,7 +645,23 @@ export function runGate(
     const dens = periods.map((p) => p.axes[axis].den);
     const denMedian = median(dens);
 
+    // 세션 단위 관측으로 분산을 가른다. 구간 29개가 아니라 세션 전수를 쓰므로 자유도가
+    // 열 배 이상이고, 29점 상관의 표준오차(약 0.19)에 휘둘리지 않는다.
+    const variance = decomposeVariance(
+      sessions.map((m) => ({
+        num: m.axes[axis].num,
+        den: m.axes[axis].den,
+      })),
+    );
+
     const half = splitHalfScores(periods, bySession, axis);
+    // 해시 분할 하나가 아니라 순열 분포를 본다. 시드는 축 순서로 고정해 재현되게 한다.
+    const permuted = permutedSplitHalf(
+      periods,
+      bySession,
+      axis,
+      AXIS_ORDER.indexOf(axis) + 1,
+    );
     const rHalf = pearson(half.first, half.second);
     // Spearman-Brown: 반쪽 상관을 전체 길이 신뢰도로 올린다.
     const reliability = Number.isNaN(rHalf) ? NaN : (2 * rHalf) / (1 + rHalf);
@@ -647,20 +768,52 @@ export function runGate(
           `>= budget ${PERIOD_BUDGET[axis]}`,
         ),
       },
+      // 분산 성분. 이 검사는 통과·미달을 내지 않고 처방을 낸다.
+      //
+      // split-half 가 "미달"만 말하고 무엇을 해야 하는지는 말하지 않았다. 축이 전부
+      // num/den 이라 관측 분산을 참분산과 이항잡음으로 가를 수 있고, 그러면 신뢰도가
+      // 0.5 가 되는 분모 k 가 나온다. k 를 구간 예산과 대조하면 그 예산이 애초에 도달
+      // 가능한 값인지 알 수 있다.
+      {
+        key: "variance-components",
+        name: L("분산 성분(처방)", "Variance components (prescription)"),
+        passed: true,
+        value:
+          variance === null
+            ? t(L("관측 부족", "not enough observations"), lang)
+            : variance.halfReliabilityDenominator === null
+              ? t(
+                  L(
+                    "참분산이 잡음보다 작아 분모를 키워도 안 오른다",
+                    "true variance is below noise; a bigger denominator will not help",
+                  ),
+                  lang,
+                )
+              : `${t(L("신호/잡음", "signal/noise"), lang)} ${signalToNoise(variance).toFixed(2)} · ` +
+                `${t(L("신뢰도 0.5 에 필요한 분모", "denominator for reliability 0.5"), lang)} ${variance.halfReliabilityDenominator.toFixed(0)} ` +
+                `(${t(L("예산", "budget"), lang)} ${PERIOD_BUDGET[axis]})`,
+        criterion: L(
+          "임계 없음. 미달을 처방으로 바꾸는 검사다",
+          "No threshold. This turns a failure into a prescription",
+        ),
+      },
       {
         key: "split-half",
         name: L("split-half", "split-half"),
-        passed: reliability >= 0.5,
-        value: Number.isNaN(reliability)
-          ? t(NOT_COMPUTABLE, lang)
-          : `${reliability.toFixed(3)} ` +
-            t(
-              L(
-                `(구간 ${half.first.length}개)`,
-                `(${half.first.length} periods)`,
+        // 판정은 순열 중앙값으로 한다. 분포의 상단을 보고 임계를 느슨하게 하고 싶어지는데,
+        // 그러면 게이트가 아니라 통과시킬 이유를 찾는 장치가 된다.
+        passed: permuted !== null && permuted.median >= 0.5,
+        value:
+          permuted === null
+            ? t(NOT_COMPUTABLE, lang)
+            : `${permuted.median.toFixed(3)} [${permuted.low.toFixed(2)}, ${permuted.high.toFixed(2)}] ` +
+              t(
+                L(
+                  `· 순열 ${permuted.permutations}회 · 구간 ${half.first.length}개`,
+                  `· ${permuted.permutations} permutations · ${half.first.length} periods`,
+                ),
+                lang,
               ),
-              lang,
-            ),
         criterion: L(">= 0.5", ">= 0.5"),
       },
       // 구간 간 예측력은 판정에서 뺀다.
@@ -820,7 +973,11 @@ export function runGate(
     // 구간 내 재현성(split-half)은 구간별 화면에만 필요하다. 전수 집계는 모든 구간을
     // 합쳐 하나의 점수를 내므로 구간 사이가 흔들려도 무관하다.
     //
-    const PER_PERIOD_ONLY = new Set<GateCheckKey>(["split-half"]);
+    const PER_PERIOD_ONLY = new Set<GateCheckKey>([
+      "split-half",
+      // 분산 성분은 판정이 아니라 처방이라 화면 지원 여부를 가르지 않는다.
+      "variance-components",
+    ]);
     const supportsAllTime = checks
       .filter((c) => !PER_PERIOD_ONLY.has(c.key))
       .every((c) => c.passed);
