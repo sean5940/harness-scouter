@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { GAMING_SCENARIOS } from "../src/gate.js";
 import { AXIS_ORDER, type AxisKey } from "../src/definitions.js";
+import { LANGS } from "../src/i18n.js";
 import { axisScore, type SessionMetrics } from "../src/metrics.js";
 
 /**
@@ -35,10 +36,14 @@ describe("조작 시나리오", () => {
 
   it("모든 시나리오가 불변량과 메커니즘을 코드 위치로 남긴다", () => {
     for (const s of GAMING_SCENARIOS) {
-      expect(s.invariant.length).toBeGreaterThan(0);
-      expect(s.mechanism.length).toBeGreaterThan(0);
-      expect(s.realWorldForm.length).toBeGreaterThan(0);
-      expect(s.corpusEvidence.length).toBeGreaterThan(0);
+      // 한쪽 언어만 채워도 화면 하나가 빈칸이 된다. 두 면을 다 본다.
+      for (const lang of LANGS) {
+        expect(s.label[lang].length).toBeGreaterThan(0);
+        expect(s.invariant[lang].length).toBeGreaterThan(0);
+        expect(s.mechanism[lang].length).toBeGreaterThan(0);
+        expect(s.realWorldForm[lang].length).toBeGreaterThan(0);
+        expect(s.corpusEvidence[lang].length).toBeGreaterThan(0);
+      }
     }
   });
 
@@ -47,7 +52,8 @@ describe("조작 시나리오", () => {
     const closed = GAMING_SCENARIOS.filter((g) => g.closed === true);
     expect(closed.length).toBeGreaterThan(0);
     for (const s of closed) {
-      expect(s.corpusEvidence).toMatch(/닫음/);
+      expect(s.corpusEvidence.ko).toMatch(/닫음/);
+      expect(s.corpusEvidence.en).toMatch(/Closed/);
     }
   });
 

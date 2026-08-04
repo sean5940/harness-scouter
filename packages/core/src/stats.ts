@@ -10,6 +10,7 @@ import {
 } from "./metrics.js";
 import { emptyEvents, emptyUsage, type Period } from "./periods.js";
 import { COMPONENT_CRITERIA } from "./growth.js";
+import { L, type Localized } from "./i18n.js";
 
 /**
  * 탐색력을 세 구성요소로 나눈 이유.
@@ -42,8 +43,50 @@ export type StatKey =
   | "delivery"
   | "discipline";
 
+/**
+ * 구성요소의 안정 키.
+ *
+ * 초판은 한국어 라벨을 그대로 조회 키로 썼다(`COMPONENT_CRITERIA[c.label]`). 표시 문자열이
+ * 곧 식별자라 라벨을 한 글자만 고쳐도 기준표 조회와 구간 간 대조가 조용히 끊긴다. 화면
+ * 언어를 늘리는 순간 이 결합이 바로 깨지므로 표시와 식별을 분리한다.
+ */
+export type ComponentKey =
+  | "fileFind"
+  | "indexedRetrieval"
+  | "groundedEdit"
+  | "readScope"
+  | "readRevisit"
+  | "outputBrevity"
+  | "contextWeight"
+  | "verificationFreshness"
+  | "verificationRedundancy"
+  | "humanIntervention"
+  | "deliveryReach"
+  | "rework"
+  | "instrumentedChannel"
+  | "gateRepeat";
+
+export const COMPONENT_LABELS: Record<ComponentKey, Localized> = {
+  fileFind: L("파일 찾기 규율", "File-finding discipline"),
+  indexedRetrieval: L("내용 인덱스 우선", "Index-first retrieval"),
+  groundedEdit: L("근거 확보율", "Evidence before edit"),
+  readScope: L("읽기 범위 규율", "Read-scope discipline"),
+  readRevisit: L("읽은 것 기억하기", "Recall of what was read"),
+  outputBrevity: L("응답 간결성", "Response brevity"),
+  contextWeight: L("컨텍스트 경량성", "Context lightness"),
+  verificationFreshness: L("커밋 전 검증 신선도", "Pre-commit check freshness"),
+  verificationRedundancy: L("검증 공회전 없음", "No redundant checks"),
+  humanIntervention: L("사람 개입 없음", "No human intervention"),
+  deliveryReach: L("산출물 도달", "Reached an artifact"),
+  rework: L("재작업 없음", "No rework"),
+  instrumentedChannel: L("계측 채널 준수", "Instrumented-channel use"),
+  gateRepeat: L("게이트 재발 없음", "No repeat gate hits"),
+};
+
 export interface StatComponent {
-  label: string;
+  /** 조회와 구간 간 대조에 쓰는 식별자. 표시에는 쓰지 않는다. */
+  key: ComponentKey;
+  label: Localized;
   /** 0~1. 높을수록 좋게 맞춘 값. */
   value: number | null;
   denominator: number;
@@ -59,8 +102,8 @@ export interface StatComponent {
 
 export interface StatValue {
   key: StatKey;
-  label: string;
-  question: string;
+  label: Localized;
+  question: Localized;
   /** 0~100 */
   score: number | null;
   components: StatComponent[];
@@ -75,22 +118,34 @@ export const STAT_ORDER: StatKey[] = [
   "context",
 ];
 
-export const STAT_LABELS: Record<StatKey, string> = {
-  retrieval: "탐색력",
-  context: "컨텍스트 효율",
-  verification: "검증력",
-  autonomy: "자율성",
-  delivery: "완수력",
-  discipline: "규율",
+export const STAT_LABELS: Record<StatKey, Localized> = {
+  retrieval: L("탐색력", "Retrieval"),
+  context: L("컨텍스트 효율", "Context efficiency"),
+  verification: L("검증력", "Verification"),
+  autonomy: L("자율성", "Autonomy"),
+  delivery: L("완수력", "Delivery"),
+  discipline: L("규율", "Discipline"),
 };
 
-export const STAT_QUESTIONS: Record<StatKey, string> = {
-  retrieval: "찾아야 할 때 옳은 방법으로 찾나",
-  context: "필요한 만큼만 읽고 토큰을 아끼나",
-  verification: "주장 전에 확인하나",
-  autonomy: "사람 개입 없이 완주하나",
-  delivery: "산출물까지 도달하나",
-  discipline: "정한 규칙과 도구 경로를 지키나",
+export const STAT_QUESTIONS: Record<StatKey, Localized> = {
+  retrieval: L(
+    "찾아야 할 때 옳은 방법으로 찾나",
+    "Does it search the right way when it needs to find something",
+  ),
+  context: L(
+    "필요한 만큼만 읽고 토큰을 아끼나",
+    "Does it read only what it needs and spend tokens sparingly",
+  ),
+  verification: L("주장 전에 확인하나", "Does it check before it claims"),
+  autonomy: L(
+    "사람 개입 없이 완주하나",
+    "Does it finish without human intervention",
+  ),
+  delivery: L("산출물까지 도달하나", "Does it reach an artifact"),
+  discipline: L(
+    "정한 규칙과 도구 경로를 지키나",
+    "Does it honor the rules and tool paths it was given",
+  ),
 };
 
 /**
@@ -162,11 +217,11 @@ function meanOf(components: StatComponent[]): number | null {
 }
 
 function component(
-  label: string,
+  key: ComponentKey,
   value: number | null,
   denominator: number,
 ): StatComponent {
-  return { label, value, denominator };
+  return { key, label: COMPONENT_LABELS[key], value, denominator };
 }
 
 export function computeStats(period: Period): StatValue[] {
@@ -175,72 +230,68 @@ export function computeStats(period: Period): StatValue[] {
 
   const byKey: Record<StatKey, StatComponent[]> = {
     retrieval: [
-      component("파일 찾기 규율", ratio(e.fileFind), e.fileFind.den),
+      component("fileFind", ratio(e.fileFind), e.fileFind.den),
       component(
-        "내용 인덱스 우선",
+        "indexedRetrieval",
         axisScore("indexedRetrieval", a.indexedRetrieval),
         a.indexedRetrieval.den,
       ),
-      component("근거 확보율", ratio(e.groundedEdit), e.groundedEdit.den),
+      component("groundedEdit", ratio(e.groundedEdit), e.groundedEdit.den),
     ],
     context: [
       component(
-        "읽기 범위 규율",
+        "readScope",
         axisScore("readScope", a.readScope),
         a.readScope.den,
       ),
       component(
-        "읽은 것 기억하기",
+        "readRevisit",
         axisScore("readRevisit", a.readRevisit),
         a.readRevisit.den,
       ),
       component(
-        "응답 간결성",
+        "outputBrevity",
         outputPerReadWriteCall(period),
         a.instrumentedChannel.den + a.readRevisit.den,
       ),
       component(
-        "컨텍스트 경량성",
+        "contextWeight",
         contextPerRequest(period),
         period.usage.requests,
       ),
     ],
     verification: [
       component(
-        "커밋 전 검증 신선도",
+        "verificationFreshness",
         axisScore("verificationFreshness", a.verificationFreshness),
         a.verificationFreshness.den,
       ),
       component(
-        "검증 공회전 없음",
+        "verificationRedundancy",
         axisScore("verificationRedundancy", a.verificationRedundancy),
         a.verificationRedundancy.den,
       ),
     ],
     autonomy: [
-      component("사람 개입 없음", autonomyScore(period), e.assistantTurns),
+      component("humanIntervention", autonomyScore(period), e.assistantTurns),
     ],
     delivery: [
       component(
-        "산출물 도달",
+        "deliveryReach",
         period.delivery.den < MIN_DELIVERY_SESSIONS
           ? null
           : ratio(period.delivery),
         period.delivery.den,
       ),
-      component("재작업 없음", inverse(ratio(e.rework)), e.rework.den),
+      component("rework", inverse(ratio(e.rework)), e.rework.den),
     ],
     discipline: [
       component(
-        "계측 채널 준수",
+        "instrumentedChannel",
         axisScore("instrumentedChannel", a.instrumentedChannel),
         a.instrumentedChannel.den,
       ),
-      component(
-        "게이트 재발 없음",
-        inverse(ratio(e.gateRepeat)),
-        e.gateRepeat.den,
-      ),
+      component("gateRepeat", inverse(ratio(e.gateRepeat)), e.gateRepeat.den),
     ],
   };
 
@@ -421,11 +472,11 @@ export function buildStatWindow(
   const hasHistory = closed.length >= MIN_HISTORY_WINDOWS;
 
   // 구성요소마다 이력 구간에서의 값이 얼마나 흔들리는지. 점수 옆에 붙일 신뢰 근거다.
-  const reliabilityOf = (label: string): number | null => {
+  const reliabilityOf = (key: ComponentKey): number | null => {
     if (!hasHistory) return null;
     const series = historyStats
       .flatMap((set) => set.flatMap((s) => s.components))
-      .filter((c) => c.label === label && c.value !== null)
+      .filter((c) => c.key === key && c.value !== null)
       .map((c) => c.value as number);
     if (series.length < MIN_HISTORY_WINDOWS) return null;
     // 구간 간 변동이 작을수록 그 구성요소의 값을 믿을 수 있다. 표준편차를 1에서 빼
@@ -449,7 +500,7 @@ export function buildStatWindow(
       ...stat,
       components: stat.components.map((c) => ({
         ...c,
-        reliability: reliabilityOf(c.label),
+        reliability: reliabilityOf(c.key),
       })),
       percentile,
       rank:
@@ -472,7 +523,7 @@ export function buildStatWindow(
   const countsTowardOverall = (s: StatEntry): boolean =>
     s.score !== null &&
     s.components.some((c) => {
-      const criterion = COMPONENT_CRITERIA[c.label];
+      const criterion = COMPONENT_CRITERIA[c.key];
       return c.value !== null && criterion?.objective !== "guarded";
     });
   const scored = stats
@@ -528,9 +579,9 @@ export function buildStatWindow(
  * 전수는 "평소 어떤가"다. 후자가 기준선이므로 개별 구간을 읽기 전에 먼저 봐야 한다.
  */
 export interface TrendRow {
-  label: string;
+  label: Localized;
   /** 구성요소면 소속 능력치 이름, 능력치 자신이면 null. */
-  parent: string | null;
+  parent: Localized | null;
   /** 0~100 */
   early: number | null;
   late: number | null;
@@ -557,20 +608,20 @@ export function compareHalves(periods: Period[]): TrendRow[] {
   const late = mergePeriods(closed.slice(half));
   if (early === null || late === null) return [];
 
-  const byLabel = (period: Period): Map<string, StatValue> => {
-    const out = new Map<string, StatValue>();
-    for (const s of computeStats(period)) out.set(s.label, s);
+  const byStatKey = (period: Period): Map<StatKey, StatValue> => {
+    const out = new Map<StatKey, StatValue>();
+    for (const s of computeStats(period)) out.set(s.key, s);
     return out;
   };
-  const A = byLabel(early);
-  const B = byLabel(late);
+  const A = byStatKey(early);
+  const B = byStatKey(late);
 
   const rows: TrendRow[] = [];
-  for (const [label, a] of A) {
-    const b = B.get(label);
+  for (const [statKey, a] of A) {
+    const b = B.get(statKey);
     if (b === undefined) continue;
     rows.push({
-      label,
+      label: a.label,
       parent: null,
       early: a.score,
       late: b.score,
@@ -578,13 +629,13 @@ export function compareHalves(periods: Period[]): TrendRow[] {
       denominator: b.components.reduce((n, c) => n + c.denominator, 0),
     });
     for (const c of a.components) {
-      const d = b.components.find((x) => x.label === c.label);
+      const d = b.components.find((x) => x.key === c.key);
       if (d === undefined) continue;
       const from = c.value === null ? null : c.value * 100;
       const to = d.value === null ? null : d.value * 100;
       rows.push({
         label: c.label,
-        parent: label,
+        parent: a.label,
         early: from,
         late: to,
         delta: from === null || to === null ? null : to - from,

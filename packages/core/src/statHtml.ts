@@ -6,7 +6,8 @@ import {
 } from "./growth.js";
 import { renderRadarSvg, rankFill } from "./radar.js";
 import { validityState } from "./validity.js";
-import type { StatEntry, StatWindow, TrendRow } from "./stats.js";
+import type { ComponentKey, StatEntry, StatWindow, TrendRow } from "./stats.js";
+import { L, t, tList, type Lang } from "./i18n.js";
 import {
   STAGE_LABELS,
   type HarnessCoverage,
@@ -187,7 +188,7 @@ body{margin:0;padding:32px 20px 64px;background:var(--bg);color:var(--text);
 }
 `;
 
-function renderStat(stat: StatEntry, gray: boolean): string {
+function renderStat(stat: StatEntry, gray: boolean, lang: Lang): string {
   const score = stat.score ?? 0;
   const low = stat.typicalLow;
   const high = stat.typicalHigh;
@@ -208,20 +209,26 @@ function renderStat(stat: StatEntry, gray: boolean): string {
   const parts = stat.components
     .map(
       (c) =>
-        `<span class="part">${escapeHtml(c.label)} <b class="num">${
+        `<span class="part">${escapeHtml(t(c.label, lang))} <b class="num">${
           c.value === null ? "—" : (c.value * 100).toFixed(0)
         }</b><span class="n num">n=${c.denominator.toLocaleString()}</span>${
           c.reliability == null
             ? ""
-            : `<span class="rel num" title="구간 간 안정성. 이력에서 이 값이 얼마나 덜 흔들렸나">±${(c.reliability * 100).toFixed(0)}</span>`
+            : `<span class="rel num" title="${t(
+                L(
+                  "구간 간 안정성. 이력에서 이 값이 얼마나 덜 흔들렸나",
+                  "Stability across periods. How little this value moved in the history",
+                ),
+                lang,
+              )}">±${(c.reliability * 100).toFixed(0)}</span>`
         }</span>`,
     )
     .join("");
 
   return `<div class="stat">
   <div class="row">
-    <div class="name">${escapeHtml(stat.label)}<span class="q">${escapeHtml(
-      stat.question,
+    <div class="name">${escapeHtml(t(stat.label, lang))}<span class="q">${escapeHtml(
+      t(stat.question, lang),
     )}</span></div>
     <div class="track">${band}<span class="fill" style="width:${Math.max(
       0,
@@ -250,46 +257,73 @@ function renderStat(stat: StatEntry, gray: boolean): string {
  * 목표가 어디서 오는지(objective)와 무엇이 비교를 깨는지(contamination)를 함께 적어야
  * 이 점수를 남의 하네스에 대고 쓸 수 있는지 판단할 수 있다.
  */
-function renderRubric(stats: StatEntry[]): string {
+function renderRubric(stats: StatEntry[], lang: Lang): string {
+  // 중복 판정과 기준표 조회를 모두 key 로 한다. 표시 문자열로 하면 언어가 바뀔 때
+  // 조회가 통째로 빗나가고, 화면은 빈 표를 조용히 낸다.
   const rows = stats.flatMap((stat) =>
-    stat.components.map((c) => ({ stat: stat.label, component: c.label })),
+    stat.components.map((c) => ({
+      stat: stat.label,
+      key: c.key,
+      component: c.label,
+    })),
   );
-  const seen = new Set<string>();
+  const seen = new Set<ComponentKey>();
   const body = rows
-    .map(({ stat, component }) => {
-      if (seen.has(component)) return "";
-      seen.add(component);
-      const criterion = COMPONENT_CRITERIA[component];
+    .map(({ stat, key, component }) => {
+      if (seen.has(key)) return "";
+      seen.add(key);
+      const criterion = COMPONENT_CRITERIA[key];
       if (criterion === undefined) return "";
       const flags =
         criterion.contamination.length === 0
-          ? '<span class="clean">비교 가능</span>'
+          ? `<span class="clean">${escapeHtml(t(L("비교 가능", "Comparable"), lang))}</span>`
           : criterion.contamination
               .map(
                 (f) =>
-                  `<span class="flag">${escapeHtml(CONTAMINATION_LABELS[f])}</span>`,
+                  `<span class="flag">${escapeHtml(t(CONTAMINATION_LABELS[f], lang))}</span>`,
               )
               .join("");
       return `<tr>
-      <td class="dim">${escapeHtml(stat)}</td>
-      <td>${escapeHtml(component)}</td>
-      <td><span class="obj ${criterion.objective}">${escapeHtml(OBJECTIVE_LABELS[criterion.objective])}</span></td>
+      <td class="dim">${escapeHtml(t(stat, lang))}</td>
+      <td>${escapeHtml(t(component, lang))}</td>
+      <td><span class="obj ${criterion.objective}">${escapeHtml(t(OBJECTIVE_LABELS[criterion.objective], lang))}</span></td>
       <td>${flags}</td>
-      <td class="basis">${escapeHtml(criterion.targetBasis)}</td>
+      <td class="basis">${escapeHtml(t(criterion.targetBasis, lang))}</td>
     </tr>`;
     })
     .join("");
   if (body === "") return "";
   return `<div class="guide rubric">
-  <h2>평가 기준 · 이 점수를 남의 하네스에 쓸 수 있는가</h2>
+  <h2>${t(
+    L(
+      "평가 기준 · 이 점수를 남의 하네스에 쓸 수 있는가",
+      "Rubric · can this score be used on someone else's harness",
+    ),
+    lang,
+  )}</h2>
   <table>
-    <thead><tr><th>능력치</th><th>구성요소</th><th>목표</th><th>비교 가능성</th><th>근거</th></tr></thead>
+    <thead><tr><th>${t(L("능력치", "Stat"), lang)}</th><th>${t(
+      L("구성요소", "Component"),
+      lang,
+    )}</th><th>${t(L("목표", "Objective"), lang)}</th><th>${t(
+      L("비교 가능성", "Comparability"),
+      lang,
+    )}</th><th>${t(L("근거", "Basis"), lang)}</th></tr></thead>
     <tbody>${body}</tbody>
   </table>
-  <div class="crit">오염 표시가 하나라도 있으면 사람 간 비교에 쓰지 않습니다.
+  <div class="crit">${t(
+    L(
+      `오염 표시가 하나라도 있으면 사람 간 비교에 쓰지 않습니다.
   <b>훅 설치가 값을 움직임</b>은 차단된 호출이 축 계산에서 빠져 방어를 깔수록 점수가 오른다는 뜻이고,
   <b>도구 이름에 묶임</b>은 이름이 다른 하네스에서 그 활동이 계상에서 통째로 빠진다는 뜻입니다.
-  <b>양극단 주의</b>는 최대화 대상이 아니라 종합 점수에서 뺍니다.</div>
+  <b>양극단 주의</b>는 최대화 대상이 아니라 종합 점수에서 뺍니다.`,
+      `Do not use this for comparison between people if even one contamination flag is present.
+  <b>Installing hooks moves the value</b> means blocked calls drop out of the axis, so the more guards you install the higher the score.
+  <b>Bound to tool names</b> means a harness with different names loses that activity from the count entirely.
+  <b>Watch both extremes</b> is not something to maximize, and is left out of the overall score.`,
+    ),
+    lang,
+  )}</div>
 </div>`;
 }
 
@@ -299,38 +333,68 @@ function renderRubric(stats: StatEntry[]): string {
  * "차단 0건"이 센서가 좋아서인지 없어서인지는 이 목록을 봐야 갈린다.
  * 축 이름은 Martin Fowler 의 harness engineering 에서 가져왔다.
  */
-function renderHarness(view: HarnessView | undefined): string {
+function renderHarness(view: HarnessView | undefined, lang: Lang): string {
   if (view === undefined) return "";
   const { coverage, coherence, sensorCount, guideCount, autoCount } = view;
   const stage = (Object.keys(coverage.byStage) as LifecycleStage[])
     .map(
       (k) =>
-        `<span class="cell"><b>${coverage.byStage[k]}</b>${escapeHtml(STAGE_LABELS[k])}</span>`,
+        `<span class="cell"><b>${coverage.byStage[k]}</b>${escapeHtml(t(STAGE_LABELS[k], lang))}</span>`,
     )
     .join("");
   return `<div class="guide harness">
-  <h2>하네스 구조 · 행동이 아니라 하네스 자체</h2>
+  <h2>${t(
+    L(
+      "하네스 구조 · 행동이 아니라 하네스 자체",
+      "Harness structure · the harness itself, not behavior",
+    ),
+    lang,
+  )}</h2>
   <div class="hbox">
-    <div class="hrow"><span class="lbl">센서</span>
-      <span class="cell"><b>${sensorCount}</b>전체</span>
-      <span class="cell"><b>${autoCount}</b>자동 발동</span>
-      <span class="cell"><b>${sensorCount - autoCount}</b>수동 호출</span>
-      <span class="cell"><b>${guideCount}</b>가이드</span></div>
-    <div class="hrow"><span class="lbl">방향</span>
-      <span class="cell"><b>${coverage.byDirection.feedforward}</b>행동 전 조종</span>
-      <span class="cell"><b>${coverage.byDirection.feedback}</b>행동 후 관찰</span></div>
-    <div class="hrow"><span class="lbl">실행</span>
-      <span class="cell"><b>${coverage.byExecution.computational}</b>결정론적</span>
-      <span class="cell"><b>${coverage.byExecution.inferential}</b>의미론적</span></div>
-    <div class="hrow"><span class="lbl">단계</span>${stage}</div>
+    <div class="hrow"><span class="lbl">${t(L("센서", "Sensors"), lang)}</span>
+      <span class="cell"><b>${sensorCount}</b>${t(L("전체", "total"), lang)}</span>
+      <span class="cell"><b>${autoCount}</b>${t(L("자동 발동", "auto-firing"), lang)}</span>
+      <span class="cell"><b>${sensorCount - autoCount}</b>${t(L("수동 호출", "called by hand"), lang)}</span>
+      <span class="cell"><b>${guideCount}</b>${t(L("가이드", "guides"), lang)}</span></div>
+    <div class="hrow"><span class="lbl">${t(L("방향", "Direction"), lang)}</span>
+      <span class="cell"><b>${coverage.byDirection.feedforward}</b>${t(L("행동 전 조종", "steer before acting"), lang)}</span>
+      <span class="cell"><b>${coverage.byDirection.feedback}</b>${t(L("행동 후 관찰", "observe after acting"), lang)}</span></div>
+    <div class="hrow"><span class="lbl">${t(L("실행", "Execution"), lang)}</span>
+      <span class="cell"><b>${coverage.byExecution.computational}</b>${t(L("결정론적", "deterministic"), lang)}</span>
+      <span class="cell"><b>${coverage.byExecution.inferential}</b>${t(L("의미론적", "semantic"), lang)}</span></div>
+    <div class="hrow"><span class="lbl">${t(L("단계", "Stage"), lang)}</span>${stage}</div>
   </div>
-  <div class="crit">규칙 문서 ${coherence.documentsChecked}개에서 훅 ${coherence.sensorsChecked}종을 확인했습니다.
+  <div class="crit">${t(
+    L(
+      `규칙 문서 ${coherence.documentsChecked}개에서 훅 ${coherence.sensorsChecked}종을 확인했습니다.`,
+      `Checked ${coherence.sensorsChecked} kinds of hooks across ${coherence.documentsChecked} rule documents.`,
+    ),
+    lang,
+  )}
   ${
     coherence.undocumentedSensors.length === 0
-      ? "전부 문서에 이름이 나옵니다."
-      : `설명 없이 막는 게이트 ${coherence.undocumentedSensors.length}종: ${coherence.undocumentedSensors.map((s) => escapeHtml(s)).join(" · ")}`
+      ? t(
+          L(
+            "전부 문서에 이름이 나옵니다.",
+            "Every one of them is named in a document.",
+          ),
+          lang,
+        )
+      : t(
+          L(
+            `설명 없이 막는 게이트 ${coherence.undocumentedSensors.length}종: ${coherence.undocumentedSensors.map((s) => escapeHtml(s)).join(" · ")}`,
+            `${coherence.undocumentedSensors.length} kinds of gates block without explaining themselves: ${coherence.undocumentedSensors.map((s) => escapeHtml(s)).join(" · ")}`,
+          ),
+          lang,
+        )
   }
-  검사 범위가 결론을 크게 바꿉니다. 같은 저장소에서 규칙 문서만 보면 미기재가 21종, 스킬까지 넣으면 4종이었습니다.</div>
+  ${t(
+    L(
+      "검사 범위가 결론을 크게 바꿉니다. 같은 저장소에서 규칙 문서만 보면 미기재가 21종, 스킬까지 넣으면 4종이었습니다.",
+      "The scope of the check changes the conclusion a lot. In the same repository, looking at rule documents alone left 21 kinds undocumented; adding skills left 4.",
+    ),
+    lang,
+  )}</div>
 </div>`;
 }
 
@@ -343,7 +407,7 @@ const TREND_THIN_DENOMINATOR = 100;
  * 정의를 고치면 점수가 움직이는데 그건 측정이 바뀐 것이지 행동이 바뀐 게 아니다.
  * 같은 정의로 시기를 갈라야 그 둘이 분리된다.
  */
-function renderTrend(rows: TrendRow[]): string {
+function renderTrend(rows: TrendRow[], lang: Lang): string {
   if (rows.length === 0) return "";
   const cell = (v: number | null) => (v === null ? "—" : v.toFixed(1));
   const arrow = (d: number | null) => {
@@ -352,16 +416,28 @@ function renderTrend(rows: TrendRow[]): string {
     return d > 0 ? "up" : "down";
   };
   return `<div class="guide trend">
-  <h2>성장 · 같은 정의로 초기 절반 대 최근 절반</h2>
+  <h2>${t(
+    L(
+      "성장 · 같은 정의로 초기 절반 대 최근 절반",
+      "Growth · early half against recent half under one definition",
+    ),
+    lang,
+  )}</h2>
   <table>
-    <thead><tr><th>항목</th><th>초기</th><th>최근</th><th>변화</th><th>분모</th></tr></thead>
+    <thead><tr><th>${t(L("항목", "Item"), lang)}</th><th>${t(
+      L("초기", "Early"),
+      lang,
+    )}</th><th>${t(L("최근", "Recent"), lang)}</th><th>${t(
+      L("변화", "Change"),
+      lang,
+    )}</th><th>${t(L("분모", "Denominator"), lang)}</th></tr></thead>
     <tbody>
     ${rows
       .map((r) => {
         const thin =
           r.parent !== null && r.denominator < TREND_THIN_DENOMINATOR;
         return `<tr class="${r.parent === null ? "statRow" : "compRow"}${thin ? " thin" : ""}">
-        <td>${r.parent === null ? "" : "&nbsp;&nbsp;&nbsp;"}${escapeHtml(r.label)}</td>
+        <td>${r.parent === null ? "" : "&nbsp;&nbsp;&nbsp;"}${escapeHtml(t(r.label, lang))}</td>
         <td class="n">${cell(r.early)}</td>
         <td class="n">${cell(r.late)}</td>
         <td class="n ${arrow(r.delta)}">${r.delta === null ? "—" : `${r.delta >= 0 ? "+" : ""}${r.delta.toFixed(1)}`}</td>
@@ -371,14 +447,23 @@ function renderTrend(rows: TrendRow[]): string {
       .join("")}
     </tbody>
   </table>
-  <div class="crit">정의를 바꾸면 점수가 움직이지만 그건 측정이 바뀐 것입니다.
+  <div class="crit">${t(
+    L(
+      `정의를 바꾸면 점수가 움직이지만 그건 측정이 바뀐 것입니다.
   같은 정의로 시기를 갈라야 행동 변화만 남습니다. 회색 줄은 분모가 ${TREND_THIN_DENOMINATOR}건 미만이라
-  차이를 판단 근거로 쓰지 않습니다.</div>
+  차이를 판단 근거로 쓰지 않습니다.`,
+      `Changing a definition moves the score, but that is the measurement changing.
+  Only splitting the periods under one definition leaves behavior change alone. Gray rows have a denominator under ${TREND_THIN_DENOMINATOR},
+  so their differences are not used as grounds for judgment.`,
+    ),
+    lang,
+  )}</div>
 </div>`;
 }
 
 export function renderStatHtml(
   window: StatWindow,
+  lang: Lang,
   options: {
     allTime?: boolean;
     trend?: TrendRow[];
@@ -387,34 +472,65 @@ export function renderStatHtml(
 ): string {
   const gray = !window.judgeable;
   const scope =
-    options.allTime === true ? "전수 집계" : `구간 #${window.periodIndex}`;
+    options.allTime === true
+      ? t(L("전수 집계", "All-time"), lang)
+      : t(
+          L(`구간 #${window.periodIndex}`, `Period #${window.periodIndex}`),
+          lang,
+        );
   const coverage =
     window.coverage === null ? "—" : `${(window.coverage * 100).toFixed(0)}%`;
 
   const rankBasis =
     options.allTime === true
-      ? "전수 집계라 등급을 절대 점수로 매겼습니다."
-      : `등급은 내 이력 ${window.historyWindows}개 창에서의 위치입니다. 절대 기준이 아닙니다.`;
+      ? t(
+          L(
+            "전수 집계라 등급을 절대 점수로 매겼습니다.",
+            "This is an all-time roll-up, so the rank is given by absolute score.",
+          ),
+          lang,
+        )
+      : t(
+          L(
+            `등급은 내 이력 ${window.historyWindows}개 창에서의 위치입니다. 절대 기준이 아닙니다.`,
+            `The rank is a position among ${window.historyWindows} windows of my own history. It is not an absolute standard.`,
+          ),
+          lang,
+        );
 
-  return `<!doctype html><html lang="ko"><head><meta charset="utf-8">
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8">
 <title>Harness Scouter</title><style>${STYLE}</style></head>
 <body><div class="wrap">
 <div class="readout">
   <span class="brand">Harness Scouter</span>
   <span class="lv"><small>LEVEL</small>${window.level}</span>
   <span class="gradeChip" style="color:${gray ? "var(--dim)" : rankFill(window.overallRank)}">${window.overallRank}</span>
-  <span class="scope">${scope} · 세션 ${window.sessionCount}개<br>
+  <span class="scope">${scope} · ${t(
+    L(`세션 ${window.sessionCount}개`, `${window.sessionCount} sessions`),
+    lang,
+  )}<br>
     ${window.startedAt.slice(0, 10)} ~ ${window.endedAt.slice(0, 10)}<br>
-    계측 커버리지 <span class="num">${coverage}</span>${gray ? ' · <span class="flag">판정 보류</span>' : ""}</span>
+    ${t(L("계측 커버리지", "Instrumentation coverage"), lang)} <span class="num">${coverage}</span>${
+      gray
+        ? ` · <span class="flag">${t(L("판정 보류", "Judgment withheld"), lang)}</span>`
+        : ""
+    }</span>
 </div>
-<div class="chart">${renderRadarSvg(window.stats, { grayedOut: gray })}</div>
-<div class="stats">${window.stats.map((stat) => renderStat(stat, gray)).join("\n")}</div>
-${renderRubric(window.stats)}
+<div class="chart">${renderRadarSvg(window.stats, lang, { grayedOut: gray })}</div>
+<div class="stats">${window.stats.map((stat) => renderStat(stat, gray, lang)).join("\n")}</div>
+${renderRubric(window.stats, lang)}
 ${
   gray
     ? ""
     : `<div class="guide">
-  <h2>성장 가이드${options.allTime === true ? " · 병목 해소 이득 순" : " · 개인 최고까지의 격차 순"}</h2>
+  <h2>${t(L("성장 가이드", "Growth guide"), lang)}${
+    options.allTime === true
+      ? t(
+          L(" · 병목 해소 이득 순", " · by gain from clearing the bottleneck"),
+          lang,
+        )
+      : t(L(" · 개인 최고까지의 격차 순", " · by gap to personal best"), lang)
+  }</h2>
   ${adviseAll(window.stats, { allTime: options.allTime === true })
     .filter((a) =>
       options.allTime === true
@@ -426,20 +542,38 @@ ${
       const c = a.criterion;
       return `<div class="adv">
       <div class="top">
-        <span class="nm">${escapeHtml(a.label)}</span>
-        <span>${options.allTime === true ? num(a.score) : `${num(a.score)} → 최고 ${num(a.best)}`}</span>
-        <span class="gap">병목 해소 시 +${num(a.bottleneckGain)}</span>
-        <span class="bn">병목 ${a.bottleneck === null ? "—" : escapeHtml(a.bottleneck.label)} ${
+        <span class="nm">${escapeHtml(t(a.label, lang))}</span>
+        <span>${
+          options.allTime === true
+            ? num(a.score)
+            : t(
+                L(
+                  `${num(a.score)} → 최고 ${num(a.best)}`,
+                  `${num(a.score)} → best ${num(a.best)}`,
+                ),
+                lang,
+              )
+        }</span>
+        <span class="gap">${t(
+          L(
+            `병목 해소 시 +${num(a.bottleneckGain)}`,
+            `+${num(a.bottleneckGain)} once the bottleneck is cleared`,
+          ),
+          lang,
+        )}</span>
+        <span class="bn">${t(L("병목", "bottleneck"), lang)} ${a.bottleneck === null ? "—" : escapeHtml(t(a.bottleneck.label, lang))} ${
           a.bottleneck?.value == null
             ? ""
             : (a.bottleneck.value * 100).toFixed(0)
         }</span>
       </div>
-      ${c === null ? "" : `<div class="crit">${escapeHtml(c.measures)}</div>`}
+      ${c === null ? "" : `<div class="crit">${escapeHtml(t(c.measures, lang))}</div>`}
       ${
         c === null
           ? ""
-          : `<ul>${c.actions.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}${c.antipatterns
+          : `<ul>${tList(c.actions, lang)
+              .map((x) => `<li>${escapeHtml(x)}</li>`)
+              .join("")}${tList(c.antipatterns, lang)
               .map((x) => `<li class="no">${escapeHtml(x)}</li>`)
               .join("")}</ul>`
       }
@@ -448,13 +582,36 @@ ${
     .join("")}
 </div>`
 }
-${gray ? '<div class="guide"><h2>성장 가이드</h2><div class="adv">계측 커버리지가 임계 아래라 이 구간의 값을 판정하지 않습니다. 커버리지가 회복된 구간에서 다시 보세요.</div></div>' : ""}
-${renderHarness(options.harness)}
-${renderTrend(options.trend ?? [])}
+${
+  gray
+    ? `<div class="guide"><h2>${t(L("성장 가이드", "Growth guide"), lang)}</h2><div class="adv">${t(
+        L(
+          "계측 커버리지가 임계 아래라 이 구간의 값을 판정하지 않습니다. 커버리지가 회복된 구간에서 다시 보세요.",
+          "Instrumentation coverage is below the floor, so the values for this period are not judged. Look again in a period where coverage has recovered.",
+        ),
+        lang,
+      )}</div></div>`
+    : ""
+}
+${renderHarness(options.harness, lang)}
+${renderTrend(options.trend ?? [], lang)}
 <div class="foot">
-굵은 육각형은 100점 경계, 파선은 개인 최고, 채운 면은 지금입니다.
-막대 안 옅은 띠는 통상 범위(p25~p75), 세로 눈금은 개인 최고입니다.<br>
-${rankBasis} 직전 구간 대비 변화는 표시하지 않습니다. 구간 간 상관이 0 근처라 잡음이기 때문입니다.<br>
+${t(
+  L(
+    `굵은 육각형은 100점 경계, 파선은 개인 최고, 채운 면은 지금입니다.
+막대 안 옅은 띠는 통상 범위(p25~p75), 세로 눈금은 개인 최고입니다.`,
+    `The bold hexagon is the 100-point boundary, the dashed line is the personal best, and the filled area is now.
+The pale band inside a bar is the typical range (p25~p75), and the vertical tick is the personal best.`,
+  ),
+  lang,
+)}<br>
+${rankBasis} ${t(
+    L(
+      "직전 구간 대비 변화는 표시하지 않습니다. 구간 간 상관이 0 근처라 잡음이기 때문입니다.",
+      "Change against the previous period is not shown. The correlation between periods sits near 0, so it is noise.",
+    ),
+    lang,
+  )}<br>
 ${escapeHtml(validityState().caveat)}
 </div>
 </div></body></html>`;

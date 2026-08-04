@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { L, type Localized } from "./i18n.js";
 import { basename, join } from "node:path";
 
 /**
@@ -25,11 +26,11 @@ export type SensorExecution = "computational" | "inferential";
 export type LifecycleStage =
   "before" | "self-correct" | "post-integration" | "monitoring";
 
-export const STAGE_LABELS: Record<LifecycleStage, string> = {
-  before: "통합 전",
-  "self-correct": "자가수정 루프",
-  "post-integration": "통합 후",
-  monitoring: "지속 모니터링",
+export const STAGE_LABELS: Record<LifecycleStage, Localized> = {
+  before: L("통합 전", "Pre-integration"),
+  "self-correct": L("자가수정 루프", "Self-correcting loop"),
+  "post-integration": L("통합 후", "Post-integration"),
+  monitoring: L("지속 모니터링", "Continuous monitoring"),
 };
 
 export interface HarnessSensor {
@@ -59,7 +60,8 @@ export interface HarnessInventory {
   sensors: HarnessSensor[];
   guides: HarnessGuide[];
   /** 스캔이 닿지 못한 곳. 없는 것과 못 본 것을 구별해야 한다. */
-  notScanned: string[];
+  /** 못 본 것. 커버리지의 빈칸을 화면에 그대로 적기 위한 목록. */
+  notScanned: Localized[];
 }
 
 /**
@@ -100,7 +102,7 @@ export function scanHarness(
 ): HarnessInventory {
   const sensors: HarnessSensor[] = [];
   const guides: HarnessGuide[] = [];
-  const notScanned: string[] = [];
+  const notScanned: Localized[] = [];
 
   const readJson = (path: string): unknown => {
     try {
@@ -199,7 +201,12 @@ export function scanHarness(
       });
     }
   } else {
-    notScanned.push("CI 설정 없음 (통합 후 단계를 못 봄)");
+    notScanned.push(
+      L(
+        "CI 설정 없음 (통합 후 단계를 못 봄)",
+        "No CI config (the post-integration stage is invisible)",
+      ),
+    );
   }
 
   const countLines = (path: string): number => {
@@ -265,7 +272,12 @@ export function scanHarness(
     }
   }
 
-  notScanned.push("런타임 피드백(SLO·로그 이상)은 트랜스크립트 밖이라 못 봄");
+  notScanned.push(
+    L(
+      "런타임 피드백(SLO·로그 이상)은 트랜스크립트 밖이라 못 봄",
+      "Runtime feedback (SLOs, log anomalies) lives outside the transcript and is invisible",
+    ),
+  );
 
   return { root, sensors, guides, notScanned };
 }

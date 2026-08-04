@@ -7,6 +7,8 @@
  * bash.ts를 고치고, 문서는 코드를 가리킨다.
  */
 
+import { L, type Localized } from "./i18n.js";
+
 export {
   classifyBash,
   extensionOf,
@@ -52,13 +54,13 @@ export const AXIS_ORDER: AxisKey[] = [
   "indexedRetrieval",
 ];
 
-export const AXIS_LABELS: Record<AxisKey, string> = {
-  readScope: "읽기 범위 규율",
-  readRevisit: "읽기 왕복 절제",
-  verificationFreshness: "검증 신선도",
-  verificationRedundancy: "검증 공회전 절제",
-  instrumentedChannel: "계측 채널 준수",
-  indexedRetrieval: "인덱스 우선 탐색",
+export const AXIS_LABELS: Record<AxisKey, Localized> = {
+  readScope: L("읽기 범위 규율", "Read-scope discipline"),
+  readRevisit: L("읽기 왕복 절제", "Read round-trip restraint"),
+  verificationFreshness: L("검증 신선도", "Check freshness"),
+  verificationRedundancy: L("검증 공회전 절제", "Check redundancy restraint"),
+  instrumentedChannel: L("계측 채널 준수", "Instrumented-channel use"),
+  indexedRetrieval: L("인덱스 우선 탐색", "Index-first retrieval"),
 };
 
 /**

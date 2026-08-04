@@ -1,4 +1,5 @@
 import type { StatEntry } from "./stats.js";
+import { t, type Lang } from "./i18n.js";
 
 export interface RadarOptions {
   size?: number;
@@ -71,6 +72,7 @@ function escapeHtml(text: string): string {
  */
 export function renderRadarSvg(
   stats: StatEntry[],
+  lang: Lang,
   options: RadarOptions = {},
 ): string {
   const size = options.size ?? 540;
@@ -167,7 +169,7 @@ export function renderRadarSvg(
     parts.push(
       `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})">` +
         `<text text-anchor="${dir.anchor}" y="-2" font-size="13.5" font-weight="600" fill="var(--hs-text)">${escapeHtml(
-          stat.label,
+          t(stat.label, lang),
         )}</text>` +
         `<text text-anchor="${dir.anchor}" y="16" font-size="12.5" fill="var(--hs-text-dim)">${value}` +
         ` <tspan font-weight="700" fill="${rankColor}">${stat.rank}</tspan>` +

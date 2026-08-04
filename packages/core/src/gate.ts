@@ -1,4 +1,5 @@
 import { AXIS_ORDER, PERIOD_BUDGET, type AxisKey } from "./definitions.js";
+import { L, t, type Lang, type Localized } from "./i18n.js";
 import { axisScore, type AxisCounts, type SessionMetrics } from "./metrics.js";
 import {
   segmentIntoPeriods,
@@ -13,11 +14,36 @@ import {
  * 붙은 그럴듯한 축"이었다. 그래서 확정축이라도 같은 기준을 통과해야 M1로 넘어간다.
  */
 
+export type GateCheckKey =
+  | "saturation"
+  | "density"
+  | "split-half"
+  | "cross-period"
+  | "personal-best"
+  | "length-confound"
+  | "gaming-shift"
+  | "ceiling-unreachable"
+  | "denominator-survival";
+
 export interface GateCheck {
-  name: string;
+  /**
+   * 표시와 무관한 식별자.
+   *
+   * 초판은 화면에 쓰는 이름으로 검사를 골라냈다(`PER_PERIOD_ONLY.has(name)`). 이름이
+   * 다국어가 되는 순간 그 비교는 한쪽 언어에서만 맞고 다른 언어에서는 조용히 아무것도
+   * 못 거른다. 같은 결함을 COMPONENT_CRITERIA 에서 한 번 겪었다.
+   */
+  key: GateCheckKey;
+  name: Localized;
   passed: boolean;
+  /**
+   * 수치와 설명이 섞인 값이라 언어를 고른 뒤 조립한다.
+   *
+   * 수치 포맷은 언어와 무관하므로 `Localized` 로 두면 같은 숫자를 두 번 적게 되고,
+   * 한쪽만 고치는 drift 가 생긴다. 설명 부분만 갈리게 하고 숫자는 한 번만 만든다.
+   */
   value: string;
-  criterion: string;
+  criterion: Localized;
 }
 
 /**
@@ -169,19 +195,19 @@ function splitHalfScores(
 
 export interface GamingScenario {
   axis: AxisKey;
-  label: string;
+  label: Localized;
   /**
    * 무엇이 그대로인가를 물리량으로 적는다.
    * "행동이 같다"는 서술은 불변량이 아니다. 읽은 바이트, verifier 프로세스 실행 횟수,
    * 접근한 파일 집합, 커밋된 트리, 스캔한 파일 집합처럼 셀 수 있는 것이어야 한다.
    */
-  invariant: string;
+  invariant: Localized;
   /** 그 불변량을 유지한 채 counter 를 움직이는 판정 구멍. 파일·함수 단위로. */
-  mechanism: string;
+  mechanism: Localized;
   /** 어느 훅 matcher·스킬 문장으로 도입되는가. */
-  realWorldForm: string;
+  realWorldForm: Localized;
   /** 코퍼스에 이미 흔적이 있는가. 없으면 코드 구멍 실증이지 관측된 행동이 아니다. */
-  corpusEvidence: string;
+  corpusEvidence: Localized;
   /**
    * 분류기 수정으로 이 경로가 막혔는가.
    *
@@ -212,24 +238,49 @@ export interface GamingScenario {
 export const GAMING_SCENARIOS: GamingScenario[] = [
   {
     axis: "readScope",
-    label: "Read offset 2 주입으로 전체읽기를 부분읽기로 계상",
-    invariant: "읽은 바이트와 호출 수가 같다",
-    mechanism:
+    label: L(
+      "Read offset 2 주입으로 전체읽기를 부분읽기로 계상",
+      "Inject Read offset 2 so full reads count as partial reads",
+    ),
+    invariant: L(
+      "읽은 바이트와 호출 수가 같다",
+      "Bytes read and call count stay the same",
+    ),
+    mechanism: L(
       "definitions.ts isEffectivePartialRead 가 시작줄 `from <= 1` 하나로 전체읽기를 판정한다. (500,499,2) 가 true 다",
-    realWorldForm: "PreToolUse:Read 훅이 offset 이 없으면 2를 주입",
-    corpusEvidence: "흔적 없음 (read_offset 2 가 0건). 코드 구멍 실증",
+      "definitions.ts isEffectivePartialRead decides a full read on the start line `from <= 1` alone. (500,499,2) is true",
+    ),
+    realWorldForm: L(
+      "PreToolUse:Read 훅이 offset 이 없으면 2를 주입",
+      "A PreToolUse:Read hook injects 2 when offset is absent",
+    ),
+    corpusEvidence: L(
+      "흔적 없음 (read_offset 2 가 0건). 코드 구멍 실증",
+      "No trace (read_offset 2 in 0 cases). Demonstrated from the code hole, not observed",
+    ),
     apply: (m) => {
       m.axes.readScope.num = m.axes.readScope.den;
     },
   },
   {
     axis: "readScope",
-    label: "같은 파일 3분할 chunk 순회로 부분읽기 비율만 올림",
-    invariant: "읽은 바이트가 같다",
-    mechanism:
+    label: L(
+      "같은 파일 3분할 chunk 순회로 부분읽기 비율만 올림",
+      "Walk the same file in 3 chunks to raise only the partial-read ratio",
+    ),
+    invariant: L("읽은 바이트가 같다", "Bytes read stay the same"),
+    mechanism: L(
       "부분읽기 판정이 호출 단위라 한 파일을 여러 호출로 나누면 전부 분자가 된다",
-    realWorldForm: "스킬 절차에 '큰 파일은 3등분해 읽는다'",
-    corpusEvidence: "offset 증가 인접 재읽기 체인 414건",
+      "The partial-read decision is per call, so splitting one file into several calls puts all of them in the numerator",
+    ),
+    realWorldForm: L(
+      "스킬 절차에 '큰 파일은 3등분해 읽는다'",
+      "A skill step that says 'read large files in three parts'",
+    ),
+    corpusEvidence: L(
+      "offset 증가 인접 재읽기 체인 414건",
+      "414 adjacent re-read chains with increasing offset",
+    ),
     apply: (m) => {
       const d = m.axes.readScope.den;
       m.axes.readScope.num += 2 * d;
@@ -238,52 +289,104 @@ export const GAMING_SCENARIOS: GamingScenario[] = [
   },
   {
     axis: "readRevisit",
-    label: "재읽기 직전 사소한 편집으로 재방문을 정당한 재확인으로 재라벨",
-    invariant: "읽은 파일과 횟수와 범위가 같다",
-    mechanism:
+    label: L(
+      "재읽기 직전 사소한 편집으로 재방문을 정당한 재확인으로 재라벨",
+      "A trivial edit right before a re-read relabels the revisit as a legitimate recheck",
+    ),
+    invariant: L(
+      "읽은 파일과 횟수와 범위가 같다",
+      "The files read, the call count, and the ranges stay the same",
+    ),
+    mechanism: L(
       "metrics.ts 의 재확인 면제가 `편집 시점 > 직전 읽기 시점` 하나로 판정한다. 편집이 실질적인지 볼 근거가 DB 에 없다 (diff 크기도 old/new 문자열도 없음)",
-    realWorldForm: "스킬 절차에 '재확인 전 대상 파일을 한 번 편집'",
-    corpusEvidence:
+      "The recheck exemption in metrics.ts decides on `edit time > previous read time` alone. The DB holds nothing that shows whether the edit was substantive (neither diff size nor old/new strings)",
+    ),
+    realWorldForm: L(
+      "스킬 절차에 '재확인 전 대상 파일을 한 번 편집'",
+      "A skill step that says 'edit the target file once before rechecking'",
+    ),
+    corpusEvidence: L(
       "이미 476건이 면제 중 (면제율 33.5%, 그중 비코드 파일 243건)",
+      "476 cases are already exempt (exemption rate 33.5%, of which 243 are non-code files)",
+    ),
     apply: (m) => {
       m.axes.readRevisit.num = 0;
     },
   },
   {
     axis: "verificationFreshness",
-    label: "커밋 호출에 결과를 안 보는 verifier 를 동봉해 신선도만 세움",
-    invariant: "커밋된 트리와 실제 검증 시점이 같다",
-    mechanism:
+    label: L(
+      "커밋 호출에 결과를 안 보는 verifier 를 동봉해 신선도만 세움",
+      "Bundle a verifier whose output is never read into the commit call to raise freshness alone",
+    ),
+    invariant: L(
+      "커밋된 트리와 실제 검증 시점이 같다",
+      "The committed tree and the actual verification time stay the same",
+    ),
+    mechanism: L(
       "classifyBash 가 세그먼트 순서를 버리고 호출 단위 boolean 만 낸다. metrics.ts 가 같은 순서 위치에서 verifier 를 커밋보다 먼저 처리한다",
-    realWorldForm:
+      "classifyBash drops segment order and emits only per-call booleans. metrics.ts handles the verifier before the commit at the same order position",
+    ),
+    realWorldForm: L(
       "PreToolUse:Bash 가 git commit 앞에 `npx tsc --version;` 을 접합",
-    corpusEvidence:
+      "PreToolUse:Bash splices `npx tsc --version;` in front of git commit",
+    ),
+    corpusEvidence: L(
       "커밋 704건 중 41건이 이미 동봉 형태 (--version 형태는 0건)",
+      "41 of 704 commits are already in bundled form (0 in the --version form)",
+    ),
     apply: (m) => {
       m.axes.verificationFreshness.num = m.axes.verificationFreshness.den;
     },
   },
   {
     axis: "verificationRedundancy",
-    label: "검증 사이에 사소한 편집·파일쓰기를 끼워 같은 종류 판정을 리셋",
-    invariant: "verifier 프로세스 실행 횟수가 같다",
-    mechanism:
+    label: L(
+      "검증 사이에 사소한 편집·파일쓰기를 끼워 같은 종류 판정을 리셋",
+      "Slip a trivial edit or file write between checks to reset the same-kind decision",
+    ),
+    invariant: L(
+      "verifier 프로세스 실행 횟수가 같다",
+      "The number of verifier process runs stays the same",
+    ),
+    mechanism: L(
       "metrics.ts 의 편집·파일쓰기 분기가 blockKinds 를 통째로 비우고, 그 비우기가 verifier 가산보다 앞에 있다",
-    realWorldForm: "스킬 검증 스텝 사이에 작업 로그 한 줄 추가",
-    corpusEvidence: "리셋이 이미 689건을 지우고 있다 (끄면 분자 960, 지금 271)",
+      "The edit and file-write branch in metrics.ts clears blockKinds wholesale, and that clearing comes before the verifier is counted",
+    ),
+    realWorldForm: L(
+      "스킬 검증 스텝 사이에 작업 로그 한 줄 추가",
+      "Add one work-log line between skill verification steps",
+    ),
+    corpusEvidence: L(
+      "리셋이 이미 689건을 지우고 있다 (끄면 분자 960, 지금 271)",
+      "The reset already erases 689 cases (numerator 960 with it off, 271 now)",
+    ),
     apply: (m) => {
       m.axes.verificationRedundancy.num = 0;
     },
   },
   {
     axis: "verificationRedundancy",
-    label: "같은 kind 반복을 && 로 한 호출에 묶어 재실행 판정을 소거",
-    invariant: "verifier 프로세스 실행 횟수가 같다",
-    mechanism:
+    label: L(
+      "같은 kind 반복을 && 로 한 호출에 묶어 재실행 판정을 소거",
+      "Chain repeats of the same kind into one call with && to erase the re-run decision",
+    ),
+    invariant: L(
+      "verifier 프로세스 실행 횟수가 같다",
+      "The number of verifier process runs stays the same",
+    ),
+    mechanism: L(
       "verifierKinds 가 Set 이라 한 호출 안의 같은 kind 반복이 1건으로 접혔다. 지금은 실행 횟수를 센다",
-    realWorldForm: "스킬 검증 스텝을 단일 명령으로 못박기",
-    corpusEvidence:
+      "verifierKinds was a Set, so repeats of the same kind inside one call folded into 1 case. It now counts runs",
+    ),
+    realWorldForm: L(
+      "스킬 검증 스텝을 단일 명령으로 못박기",
+      "Pin the skill verification steps to a single command",
+    ),
+    corpusEvidence: L(
       "접혀 있던 107건이 수정 후 분모에 들어왔다 (1,585 → 1,692). 2026-08-03 분류기 수정으로 닫음. 재발 감시용으로 남긴다",
+      "107 folded cases entered the denominator after the fix (1,585 → 1,692). Closed by the 2026-08-03 classifier fix. Kept to watch for recurrence",
+    ),
     closed: true,
     apply: (m) => {
       const c = m.axes.verificationRedundancy;
@@ -293,13 +396,26 @@ export const GAMING_SCENARIOS: GamingScenario[] = [
   },
   {
     axis: "instrumentedChannel",
-    label: "cat 대신 awk·python3·node 로 읽어 분자와 분모에서 동시 탈락",
-    invariant: "접근한 파일 집합이 같다",
-    mechanism:
+    label: L(
+      "cat 대신 awk·python3·node 로 읽어 분자와 분모에서 동시 탈락",
+      "Read with awk, python3, or node instead of cat to drop out of both numerator and denominator",
+    ),
+    invariant: L(
+      "접근한 파일 집합이 같다",
+      "The set of files accessed stays the same",
+    ),
+    mechanism: L(
       "소스읽기 판정이 cat·head·tail·bat·sed 다섯 이름만 봤다. 지금은 awk 와 인터프리터 인라인 코드(-c·-e·-p)도 잡는다. 스크립트 실행은 읽기가 아니라 제외한다",
-    realWorldForm: "같은 읽기를 awk·python3 로 쓰는 별칭 한 줄",
-    corpusEvidence:
+      "The source-read decision looked at five names only: cat, head, tail, bat, sed. It now also catches awk and interpreter inline code (-c, -e, -p). Running a script is not a read and stays out",
+    ),
+    realWorldForm: L(
+      "같은 읽기를 awk·python3 로 쓰는 별칭 한 줄",
+      "A one-line alias that writes the same read with awk or python3",
+    ),
+    corpusEvidence: L(
       "미판정이던 670건이 수정 후 분모에 들어왔다 (8,122 → 8,792). 2026-08-03 분류기 수정으로 닫음. 재발 감시용으로 남긴다",
+      "670 undecided cases entered the denominator after the fix (8,122 → 8,792). Closed by the 2026-08-03 classifier fix. Kept to watch for recurrence",
+    ),
     closed: true,
     apply: (m) => {
       const c = m.axes.instrumentedChannel;
@@ -309,11 +425,26 @@ export const GAMING_SCENARIOS: GamingScenario[] = [
   },
   {
     axis: "instrumentedChannel",
-    label: "bash 파일 접근을 && 로 4:1 묶어 호출 수만 줄임",
-    invariant: "접근한 파일 집합이 같다",
-    mechanism: "가산 단위가 세그먼트가 아니라 호출이라 묶으면 분자가 줄어든다",
-    realWorldForm: "스킬 절차에 '명령을 이어붙여 호출 수를 줄인다'",
-    corpusEvidence: "여러 kind 묶음이 이미 139건",
+    label: L(
+      "bash 파일 접근을 && 로 4:1 묶어 호출 수만 줄임",
+      "Chain bash file accesses 4:1 with && to cut only the call count",
+    ),
+    invariant: L(
+      "접근한 파일 집합이 같다",
+      "The set of files accessed stays the same",
+    ),
+    mechanism: L(
+      "가산 단위가 세그먼트가 아니라 호출이라 묶으면 분자가 줄어든다",
+      "The counting unit is the call, not the segment, so chaining shrinks the numerator",
+    ),
+    realWorldForm: L(
+      "스킬 절차에 '명령을 이어붙여 호출 수를 줄인다'",
+      "A skill step that says 'chain commands to cut the call count'",
+    ),
+    corpusEvidence: L(
+      "여러 kind 묶음이 이미 139건",
+      "139 multi-kind chains already",
+    ),
     apply: (m) => {
       const c = m.axes.instrumentedChannel;
       const k = Math.ceil(c.num / 4);
@@ -323,13 +454,26 @@ export const GAMING_SCENARIOS: GamingScenario[] = [
   },
   {
     axis: "indexedRetrieval",
-    label: "git grep·비재귀 글롭 grep 으로 전수 스캔을 분류기에서 제외",
-    invariant: "스캔한 파일 집합이 같다",
-    mechanism:
+    label: L(
+      "git grep·비재귀 글롭 grep 으로 전수 스캔을 분류기에서 제외",
+      "Hide full scans from the classifier with git grep or non-recursive glob grep",
+    ),
+    invariant: L(
+      "스캔한 파일 집합이 같다",
+      "The set of files scanned stays the same",
+    ),
+    mechanism: L(
       "searchKindOfSegment 가 세그먼트 선두 토큰만 봐서 `git grep` 이 전 필드 false 였다. 지금은 git grep 과 비재귀 글롭 grep 을 함께 잡는다",
-    realWorldForm: "검색 게이트 훅이 rg 를 git grep 으로 리라이트",
-    corpusEvidence:
+      "searchKindOfSegment looked at the leading token of a segment only, so `git grep` was false in every field. It now catches git grep and non-recursive glob grep together",
+    ),
+    realWorldForm: L(
+      "검색 게이트 훅이 rg 를 git grep 으로 리라이트",
+      "A search gate hook rewrites rg into git grep",
+    ),
+    corpusEvidence: L(
       "은닉돼 있던 688건이 수정 후 분모에 들어왔다 (3,438 → 4,126). 2026-08-03 분류기 수정으로 닫음. 재발 감시용으로 남긴다",
+      "688 hidden cases entered the denominator after the fix (3,438 → 4,126). Closed by the 2026-08-03 classifier fix. Kept to watch for recurrence",
+    ),
     closed: true,
     apply: (m) => {
       const c = m.axes.indexedRetrieval;
@@ -339,17 +483,34 @@ export const GAMING_SCENARIOS: GamingScenario[] = [
   },
   {
     axis: "indexedRetrieval",
-    label: "결과를 안 읽는 index query 를 스캔마다 1회 선행",
-    invariant: "스캔한 파일 집합이 같다",
-    mechanism:
+    label: L(
+      "결과를 안 읽는 index query 를 스캔마다 1회 선행",
+      "Run one index query whose results are never read before each scan",
+    ),
+    invariant: L(
+      "스캔한 파일 집합이 같다",
+      "The set of files scanned stays the same",
+    ),
+    mechanism: L(
       '인덱스 검색 판정이 호출 유무만 본다. `qmd query --limit 1 ""` 도 분모 크레딧을 받는다',
-    realWorldForm: "스킬 탐색 스텝에 'grep 전에 qmd 를 한 번 부른다'",
-    corpusEvidence: "닫아 둔 것은 qmd get·status 뿐이고 query 반복은 열려 있다",
+      'The index-search decision looks only at whether a call happened. `qmd query --limit 1 ""` gets denominator credit too',
+    ),
+    realWorldForm: L(
+      "스킬 탐색 스텝에 'grep 전에 qmd 를 한 번 부른다'",
+      "A skill exploration step that says 'call qmd once before grep'",
+    ),
+    corpusEvidence: L(
+      "닫아 둔 것은 qmd get·status 뿐이고 query 반복은 열려 있다",
+      "Only qmd get and status are closed; repeating query is still open",
+    ),
     apply: (m) => {
       m.axes.indexedRetrieval.den += m.axes.indexedRetrieval.num;
     },
   },
 ];
+
+const NOT_COMPUTABLE = L("계산 불가", "not computable");
+const NO_SCENARIO = L("시나리오 없음", "no scenario");
 
 function clone(metrics: SessionMetrics): SessionMetrics {
   return {
@@ -364,6 +525,7 @@ function clone(metrics: SessionMetrics): SessionMetrics {
 export function runGate(
   sessions: SessionMetrics[],
   forPeriods: SessionForPeriod[],
+  lang: Lang,
 ): GateResult {
   const periods = segmentIntoPeriods(forPeriods).filter((p) => !p.open);
   const bySession = new Map(sessions.map((s) => [s.sessionId, s]));
@@ -462,26 +624,44 @@ export function runGate(
       bestPeriod.den >= PERIOD_BUDGET[axis] &&
       bestPeriod.score <= outlierFence;
 
+    const worstLabel = worst === null ? "" : t(worst.scenario.label, lang);
+
     const checks: GateCheck[] = [
       {
-        name: "포화",
+        key: "saturation",
+        name: L("포화", "Saturation"),
         passed: spread > 0.069,
         value: `p05~p95 ${spread.toFixed(3)}`,
-        criterion: "> 0.069 (cache_read를 죽인 값)",
+        criterion: L(
+          "> 0.069 (cache_read를 죽인 값)",
+          "> 0.069 (the value that killed cache_read)",
+        ),
       },
       {
-        name: "분모 밀도",
+        key: "density",
+        name: L("분모 밀도", "Denominator density"),
         passed: denMedian >= PERIOD_BUDGET[axis],
         value: `median ${denMedian.toFixed(0)}`,
-        criterion: `>= 예산 ${PERIOD_BUDGET[axis]}`,
+        criterion: L(
+          `>= 예산 ${PERIOD_BUDGET[axis]}`,
+          `>= budget ${PERIOD_BUDGET[axis]}`,
+        ),
       },
       {
-        name: "split-half",
+        key: "split-half",
+        name: L("split-half", "split-half"),
         passed: reliability >= 0.5,
         value: Number.isNaN(reliability)
-          ? "계산 불가"
-          : `${reliability.toFixed(3)} (구간 ${half.first.length}개)`,
-        criterion: ">= 0.5",
+          ? t(NOT_COMPUTABLE, lang)
+          : `${reliability.toFixed(3)} ` +
+            t(
+              L(
+                `(구간 ${half.first.length}개)`,
+                `(${half.first.length} periods)`,
+              ),
+              lang,
+            ),
+        criterion: L(">= 0.5", ">= 0.5"),
       },
       // 구간 간 예측력은 판정에서 뺀다.
       //
@@ -491,68 +671,129 @@ export function runGate(
       // 아니다. 그래서 delta 표시를 없앴고, 화면은 개인최고와 백분위만 쓴다.
       // 쓰지 않는 전제를 계속 pass/fail 로 두면 게이트가 엉뚱한 것을 막는다.
       {
-        name: "구간 간 예측력(표시)",
+        key: "cross-period",
+        name: L("구간 간 예측력(표시)", "Cross-period predictivity (display)"),
         passed: true,
         value: Number.isNaN(rLag1)
-          ? "계산 불가"
-          : `lag-1 r=${rLag1.toFixed(3)} · 구간 delta 비교는 지원하지 않음`,
-        criterion: "임계 없음. 화면이 delta 를 쓰지 않는다",
+          ? t(NOT_COMPUTABLE, lang)
+          : `lag-1 r=${rLag1.toFixed(3)} ` +
+            t(
+              L(
+                "· 구간 delta 비교는 지원하지 않음",
+                "· period-to-period delta is not supported",
+              ),
+              lang,
+            ),
+        criterion: L(
+          "임계 없음. 화면이 delta 를 쓰지 않는다",
+          "No threshold. The view does not use delta",
+        ),
       },
       {
-        name: "개인최고 도달성",
+        key: "personal-best",
+        name: L("개인최고 도달성", "Personal-best reachability"),
         passed: bestIsReachable,
         value:
           bestPeriod === null
-            ? "점수 있는 구간 없음"
-            : `최고 ${(bestPeriod.score * 100).toFixed(1)} · 그 구간 분모 ${bestPeriod.den}` +
-              (bestPeriod.score > outlierFence ? " · 분포에서 튄 값" : ""),
-        criterion: `최고 구간 분모 >= ${PERIOD_BUDGET[axis]} 이고 사분위 울타리 안`,
+            ? t(L("점수 있는 구간 없음", "no scored period"), lang)
+            : t(
+                L(
+                  `최고 ${(bestPeriod.score * 100).toFixed(1)} · 그 구간 분모 ${bestPeriod.den}`,
+                  `best ${(bestPeriod.score * 100).toFixed(1)} · denominator of that period ${bestPeriod.den}`,
+                ),
+                lang,
+              ) +
+              (bestPeriod.score > outlierFence
+                ? t(
+                    L(" · 분포에서 튄 값", " · outlier in the distribution"),
+                    lang,
+                  )
+                : ""),
+        criterion: L(
+          `최고 구간 분모 >= ${PERIOD_BUDGET[axis]} 이고 사분위 울타리 안`,
+          `best period denominator >= ${PERIOD_BUDGET[axis]} and inside the quartile fence`,
+        ),
       },
       {
-        name: "길이 교란",
+        key: "length-confound",
+        name: L("길이 교란", "Length confound"),
         passed: Number.isNaN(rLength) || Math.abs(rLength) < 0.5,
-        value: Number.isNaN(rLength) ? "계산 불가" : rLength.toFixed(3),
-        criterion: "|rho| < 0.5",
+        value: Number.isNaN(rLength)
+          ? t(NOT_COMPUTABLE, lang)
+          : rLength.toFixed(3),
+        criterion: L("|rho| < 0.5", "|rho| < 0.5"),
       },
       // 조작 저항은 pass/fail 을 내지 않는다. 임계 10p 가 두 방향으로 깨진다.
       // 조작 없이도 연속 구간 변동 중앙값이 10p 를 넘는 축이 6개 중 5개고,
       // 반대로 읽기 왕복 절제는 여유폭이 7.5p 라 어떤 조작으로도 10p 를 못 넘어
       // 자동 통과한다. 크기로는 조작과 자연 표류를 가를 수 없으므로 값만 보여준다.
       {
-        name: "조작 이동(표시)",
+        key: "gaming-shift",
+        name: L("조작 이동(표시)", "Gaming shift (display)"),
         passed: true,
         value:
           worst === null
-            ? "시나리오 없음"
+            ? t(NO_SCENARIO, lang)
             : `${
                 (worst.shift * 100 >= 0 ? "+" : "") +
                 (worst.shift * 100).toFixed(1)
               }p` +
-              ` · 여유폭의 ${((worst.shift / (1 - baseline)) * 100).toFixed(
-                0,
-              )}%` +
-              ` · 표류의 ${(worst.shift / drift).toFixed(1)}배 (${
-                worst.scenario.label
-              })`,
-        criterion: "임계 없음. 판정은 아래 두 검사가 한다",
+              t(
+                L(
+                  ` · 여유폭의 ${((worst.shift / (1 - baseline)) * 100).toFixed(0)}%`,
+                  ` · ${((worst.shift / (1 - baseline)) * 100).toFixed(0)}% of headroom`,
+                ),
+                lang,
+              ) +
+              t(
+                L(
+                  ` · 표류의 ${(worst.shift / drift).toFixed(1)}배 (${worstLabel})`,
+                  ` · ${(worst.shift / drift).toFixed(1)}x drift (${worstLabel})`,
+                ),
+                lang,
+              ),
+        criterion: L(
+          "임계 없음. 판정은 아래 두 검사가 한다",
+          "No threshold. The two checks below decide",
+        ),
       },
       // 크기 대신 "활동을 안 바꾸고 축을 상한까지 밀 수 있는가"를 본다.
       // 새 상수를 안 만들고 코퍼스 중앙값에 안 흔들린다.
       {
-        name: "상한 도달 불가",
+        key: "ceiling-unreachable",
+        name: L("상한 도달 불가", "Ceiling unreachable"),
         passed: worst !== null && worst.shift < 1 - baseline - 1e-9,
         value:
           worst === null
-            ? "시나리오 없음 (재보지 않음)"
+            ? t(
+                L("시나리오 없음 (재보지 않음)", "no scenario (not measured)"),
+                lang,
+              )
             : worst.shift >= 1 - baseline - 1e-9
-              ? `상한까지 밀림 (${(baseline * 100).toFixed(1)} → 100.0)`
-              : `${((baseline + worst.shift) * 100).toFixed(1)} 까지만`,
-        criterion: "활동 불변 경로로 100점에 도달하지 못할 것",
+              ? t(
+                  L(
+                    `상한까지 밀림 (${(baseline * 100).toFixed(1)} → 100.0)`,
+                    `pushed to the ceiling (${(baseline * 100).toFixed(1)} → 100.0)`,
+                  ),
+                  lang,
+                )
+              : t(
+                  L(
+                    `${((baseline + worst.shift) * 100).toFixed(1)} 까지만`,
+                    `only up to ${((baseline + worst.shift) * 100).toFixed(1)}`,
+                  ),
+                  lang,
+                ),
+        criterion: L(
+          "활동 불변 경로로 100점에 도달하지 못할 것",
+          "Must not reach 100 through an activity-invariant path",
+        ),
       },
       // 조작이 점수를 올리면서 관측 자체를 없애는 경우를 잡는다.
       // 임계가 이미 코드에 있는 PERIOD_BUDGET 이라 새 상수가 아니다.
       {
-        name: "분모 생존",
+        key: "denominator-survival",
+        name: L("분모 생존", "Denominator survival"),
         passed:
           worst === null
             ? false
@@ -560,19 +801,28 @@ export function runGate(
               worst.scoredPeriods >= scores.length,
         value:
           worst === null
-            ? "시나리오 없음"
-            : `den ${worst.denAfter.toFixed(0)} · 유효구간 ${
-                worst.scoredPeriods
-              }/${scores.length}`,
-        criterion: `den >= ${PERIOD_BUDGET[axis]} 이고 구간 수 유지`,
+            ? t(NO_SCENARIO, lang)
+            : `den ${worst.denAfter.toFixed(0)} ` +
+              t(
+                L(
+                  `· 유효구간 ${worst.scoredPeriods}/${scores.length}`,
+                  `· scored periods ${worst.scoredPeriods}/${scores.length}`,
+                ),
+                lang,
+              ),
+        criterion: L(
+          `den >= ${PERIOD_BUDGET[axis]} 이고 구간 수 유지`,
+          `den >= ${PERIOD_BUDGET[axis]} and period count preserved`,
+        ),
       },
     ];
 
     // 구간 내 재현성(split-half)은 구간별 화면에만 필요하다. 전수 집계는 모든 구간을
     // 합쳐 하나의 점수를 내므로 구간 사이가 흔들려도 무관하다.
-    const PER_PERIOD_ONLY = new Set(["split-half"]);
+    //
+    const PER_PERIOD_ONLY = new Set<GateCheckKey>(["split-half"]);
     const supportsAllTime = checks
-      .filter((c) => !PER_PERIOD_ONLY.has(c.name))
+      .filter((c) => !PER_PERIOD_ONLY.has(c.key))
       .every((c) => c.passed);
     const supportsPerPeriod = checks.every((c) => c.passed);
 
