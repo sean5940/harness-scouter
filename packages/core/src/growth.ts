@@ -287,7 +287,7 @@ export const COMPONENT_CRITERIA: Record<ComponentKey, ComponentCriterion> = {
     objective: "directional",
     contamination: ["mix-conditional"],
     targetBasis: L(
-      "탐색만 하는 세션은 커밋이 없는 것이 정상이다. 100 을 목표로 두면 의미 없는 커밋이 유리해진다. 실측 94%라 등수를 못 매기므로 점수에서 빼고 보여주기만 한다. PR 결과를 외부 준거로 쓰려다 머지율 89%를 변별력 없음으로 기각한 것과 같은 이유다.",
+      "탐색만 하는 세션은 커밋이 없는 것이 정상이다. 100 을 목표로 두면 의미 없는 커밋이 유리해진다. 실측 94%라 등수를 못 매기므로 점수에서 빼고 보여주기만 한다. PR 결과를 맞춰볼 기준으로 쓰려다 머지율 89%를 변별력 없음으로 기각한 것과 같은 이유다.",
       "An exploration-only session normally has no commit. Setting 100 as the target rewards meaningless commits. At 94% observed it cannot rank anything, so it is shown but kept out of the score. Same reason PR outcomes were rejected as an external criterion at an 89% merge rate.",
     ),
     actions: {

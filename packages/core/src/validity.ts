@@ -45,7 +45,7 @@ export const VALIDITY_ATTEMPTS: ValidityAttempt[] = [
 ];
 
 export interface ValidityState {
-  /** 외부 준거로 검증됐는가. 지금은 항상 거짓이다. */
+  /** 바깥 기준에 맞춰 검증됐는가. 지금은 항상 거짓이다. */
   externallyValidated: boolean;
   /** 화면에 함께 적을 한 문장. */
   caveat: Localized;

@@ -166,7 +166,7 @@
   <text class="note dim" x="462" y="535">활동은 그대로인데 계산만 좋아지는 경로를 축마다 등록합니다</text>
 
   <rect class="warn" x="450" y="562" width="416" height="52" rx="4"/>
-  <text class="name t" x="462" y="582">validity.ts — 외부 준거 없음</text>
+  <text class="name t" x="462" y="582">validity.ts · 맞춰볼 기준 없음</text>
   <text class="note dim" x="462" y="599">사람 라벨과 PR 결과를 시도해 둘 다 기각. 그 사실을 화면에 적습니다</text>
 
   <rect class="box" x="898" y="498" width="136" height="52" rx="4"/>
