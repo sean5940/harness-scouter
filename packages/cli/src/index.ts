@@ -46,6 +46,7 @@ import {
   type PeriodReport,
 } from "@harness-scouter/core";
 
+import { parseArgs } from "./args.js";
 import { VERSION } from "./version.js";
 
 /**
@@ -209,29 +210,6 @@ const COLUMNS: Record<
     scope: 14,
   },
 };
-
-function parseArgs(argv: string[]): {
-  command: string;
-  flags: Map<string, string>;
-} {
-  // 첫 토큰이 플래그면 명령이 없는 호출이다. `scouter --lang klingon` 을 명령 이름으로
-  // 읽으면 언어 오류 대신 "알 수 없는 명령"이 나와 무엇이 틀렸는지 알 수 없다.
-  const first = argv[0];
-  const named = first !== undefined && !first.startsWith("--");
-  const command = named ? first : "help";
-  const flags = new Map<string, string>();
-  for (let i = named ? 1 : 0; i < argv.length; i += 1) {
-    const token = argv[i];
-    if (token === undefined || !token.startsWith("--")) continue;
-    const next = argv[i + 1];
-    flags.set(
-      token.slice(2),
-      next !== undefined && !next.startsWith("--") ? next : "true",
-    );
-    if (next !== undefined && !next.startsWith("--")) i += 1;
-  }
-  return { command, flags };
-}
 
 /** 스탯 창에 함께 실을 하네스 구조 요약. 저장소를 못 읽으면 생략한다. */
 function harnessViewOf(root: string) {
