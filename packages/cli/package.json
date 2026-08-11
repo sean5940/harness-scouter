@@ -1,13 +1,13 @@
 {
   "name": "@harness-scouter/cli",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "bin": {
     "scouter": "./dist/index.js"
   },
   "dependencies": {
-    "@harness-scouter/core": "0.2.0"
+    "@harness-scouter/core": "0.2.1"
   },
   "scripts": {
     "build": "tsc --build"
