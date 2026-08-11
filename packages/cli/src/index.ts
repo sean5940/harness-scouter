@@ -36,6 +36,7 @@ import {
   PERIOD_MIN_SESSIONS,
   scan,
   ScouterDb,
+  guardBrokenPipe,
   L,
   resolveLang,
   t,
@@ -47,7 +48,6 @@ import {
 } from "@harness-scouter/core";
 
 import { parseArgs } from "./args.js";
-import { guardBrokenPipe } from "./stdio.js";
 import { VERSION } from "./version.js";
 
 /**

@@ -22,6 +22,7 @@ import {
   checkCoherence,
   defaultDbPath,
   diagnosePeriod,
+  guardBrokenPipe,
   mergePeriods,
   resolveLang,
   ruleDocumentPaths,
@@ -304,6 +305,11 @@ function handle(req: Request): void {
     });
   }
 }
+
+// 클라이언트가 먼저 끊으면 stdout 이 EPIPE 를 낸다. 응답 하나가 파이프 버퍼에 들어갈
+// 만큼 작아 평소에는 안 보이지만, 버퍼를 넘길 만큼 쌓이는 순간 스택트레이스와 함께
+// 죽는다. 읽을 사람이 없어진 것은 서버의 실패가 아니므로 조용히 끝낸다.
+guardBrokenPipe(process.stdout, () => process.exit(0));
 
 const rl = createInterface({ input: process.stdin });
 rl.on("line", (line) => {
