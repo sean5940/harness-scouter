@@ -1042,7 +1042,7 @@ async function main(): Promise<void> {
       const score =
         axis?.current == null ? "—" : `${(axis.current * 100).toFixed(0)}%`;
       process.stdout.write(
-        `  ${t(AXIS_LABELS[d.axis], lang)} (${score}) — ${d.headline}\n`,
+        `  ${t(AXIS_LABELS[d.axis], lang)} (${score}) · ${t(d.headline, lang)}\n`,
       );
       for (const item of d.items) {
         process.stdout.write(
