@@ -8,34 +8,34 @@ What gets measured is the **harness**, not the model. The same model gives diffe
 
 ```
   HARNESS SCOUTER  all-time         Lv. 71  B
-  2026-07-02 ~ 2026-08-04 · 349 sessions · 29 history windows · coverage 83%
+  2026-07-02 ~ 2026-08-10 · 366 sessions · 30 history windows · coverage 82%
   ────────────────────────────────────────────────────────────────────────────────
-  Retrieval          █████████████░░░░░░░░░░░  53  C   typical   46~59  best  67
-      File-finding discipline     21   n= 1548
-      Index-first retrieval       46   n= 5114
-      Evidence before edit        92   n= 1684
-  Verification       ███████████████████░░░░░  81  A   typical   74~89  best  99
-      Pre-commit check freshness  84   n=  397
-      No redundant checks         79   n= 2016
-  Delivery           █████████████████████░░░  88  A   typical   87~93  best  98
-      Reached an artifact         94   n=  170  (display)
-      No rework                   88   n= 6123
+  Retrieval          ████████████░░░░░░░░░░░░  52  C   typical   46~59  best  67
+      File-finding discipline     21   n= 1604
+      Index-first retrieval       45   n= 5608
+      Evidence before edit        91   n= 1861
+  Verification       ████████████████████░░░░  81  A   typical   75~89  best  99
+      Pre-commit check freshness  84   n=  415
+      No redundant checks         78   n= 2131
+  Delivery           █████████████████████░░░  88  A   typical   86~93  best  98
+      Reached an artifact         91   n=  178  (display)
+      No rework                   88   n= 6774
   Autonomy           ██████████████████████░░  90  S   typical   85~96  best 100
-      No human intervention       90   n=73629
-  Discipline         ████████████████░░░░░░░░  66  B   typical   70~79  best  93
-      Instrumented-channel use    61   n= 9985
-      No repeat gate hits         70   n= 2015
+      No human intervention       90   n=78760
+  Discipline         ████████████████░░░░░░░░  65  B   typical   69~78  best  93
+      Instrumented-channel use    59   n=11414
+      No repeat gate hits         71   n= 2142
   Context efficiency ████████████████░░░░░░░░  68  B   typical   64~72  best  83
-      Read-scope discipline       58   n= 2473
-      Recall of what was read     92   n=12964
-      Response brevity            54   n=22949
-      Context lightness           65   n=47204
+      Read-scope discipline       60   n= 2765
+      Recall of what was read     92   n=13977
+      Response brevity            56   n=25391
+      Context lightness           64   n=51374
   ────────────────────────────────────────────────────────────────────────────────
-  Overall 71.2 · B  (6.8p to the nearest grade cut)
+  Overall 70.9 · B  (7.1p to the nearest grade cut)
   All-time aggregate, so grades come from absolute scores. Drop --all for per-period grades.
 ```
 
-The useful part is not the number itself but **which component is the bottleneck**. In the screen above, Exploration 53 comes down to one thing, `File-finding discipline 21`, and fixing it takes Exploration from 53 to 72. That is how I used it while building this tool.
+The useful part is not the number itself but **which component is the bottleneck**. In the screen above, Retrieval 52 comes down to one thing, `File-finding discipline 21`, and fixing it takes Retrieval from 52 to 78. That is how I used it while building this tool.
 
 There is no external evidence yet that these scores correlate with actual quality. Read [Known limitations](#known-limitations) first to decide how far to trust them.
 
@@ -45,7 +45,7 @@ There is no external evidence yet that these scores correlate with actual qualit
 
 Three tracks run separately.
 
-**The behavior pipeline** pulls only facts out of the transcripts into SQLite, and recomputes the scores every time. The structure exists so that changing a definition does not mean reparsing 890MB. That is why there are no scores in `db.ts`.
+**The behavior pipeline** pulls only facts out of the transcripts into SQLite, and recomputes the scores every time. The structure exists so that changing a definition does not mean reparsing 940MB. That is why there are no scores in `db.ts`.
 
 **The harness structure scan** reads the inventory of sensors and guides out of the repository. Behavior alone cannot tell whether "0 blocks" means the sensors are good or that there are none. The axis names come from Martin Fowler's [harness engineering](https://martinfowler.com/articles/harness-engineering.html).
 
@@ -56,8 +56,8 @@ Three tracks run separately.
 Everything is local. Nothing leaves the machine. The one exception is `scouter outcomes`, the only command that asks GitHub for a list of PRs through `gh`.
 
 ```
-~/.claude/projects/**/*.jsonl   read-only input. 890MB
-~/.harness-scouter/scouter.sqlite   fact tables. 170MB
+~/.claude/projects/**/*.jsonl   read-only input. 940MB
+~/.harness-scouter/scouter.sqlite   fact tables. 218MB
 ~/.harness-scouter/labels.jsonl     labels applied by a person
 ```
 
@@ -71,15 +71,15 @@ The DB holds **parsed facts only**. No scores.
 
 | Table           | What it holds                                                       | Rows (sample) |
 | --------------- | ------------------------------------------------------------------- | ------------- |
-| `session`       | Session metadata. Project, branch, model, entry point               | 424           |
-| `tool_call`     | Tool calls. Name, command, file path, whether it was blocked, agent | 60,584        |
-| `tool_result`   | Tool results. Lines read, edit kind, stdout tail                    | 57,748        |
-| `usage`         | Tokens per response. Deduplicated per request                       | 46,241        |
-| `session_event` | Interrupts, queued input, tool denials                              | 4,283         |
-| `artifact`      | Commits, PRs, commit hashes                                         | 1,387         |
-| `file_cursor`   | Per-file mtime and byte position                                    | 1,527         |
+| `session`       | Session metadata. Project, branch, model, entry point               | 609           |
+| `tool_call`     | Tool calls. Name, command, file path, whether it was blocked, agent | 71,727        |
+| `tool_result`   | Tool results. Lines read, edit kind, stdout tail                    | 71,719        |
+| `usage`         | Tokens per response. Deduplicated per request                       | 56,954        |
+| `session_event` | Interrupts, queued input, tool denials                              | 4,997         |
+| `artifact`      | Commits, PRs, commit hashes                                         | 1,473         |
+| `file_cursor`   | Per-file mtime and byte position                                    | 2,099         |
 
-**Not storing the axis scores is the core of the design.** Metric definitions change often, and if every change meant reparsing 890MB, the iteration loop would fall apart. Facts are stored; axes are computed every time.
+**Not storing the axis scores is the core of the design.** Metric definitions change often, and if every change meant reparsing 940MB, the iteration loop would fall apart. Facts are stored; axes are computed every time.
 
 ### It is safe to delete
 
@@ -87,7 +87,7 @@ The DB can be thrown away and rebuilt at any time. The transcripts are the origi
 
 ```bash
 rm ~/.harness-scouter/scouter.sqlite*
-npm run scouter -- scan     # full 890MB reparse, 8s
+npm run scouter -- scan     # full 940MB reparse, 8s
 ```
 
 The incremental scan remembers each file's mtime and byte position and reads only the lines appended since. With nothing changed it finishes in under 1 second.
@@ -106,7 +106,7 @@ Attached to the release on every tag. The runtime is bundled, so nothing has to 
 | macOS (Intel)         | `scouter-darwin-x64.tar.gz`   |
 | Linux (x86_64)        | `scouter-linux-x64.tar.gz`    |
 
-**This repository is private.** An anonymous `curl` cannot fetch it, so it is downloaded authenticated with `gh`.
+The repository is public, so no authentication is needed. `latest` always points at the newest release.
 
 ```bash
 case "$(uname -sm)" in
@@ -114,8 +114,9 @@ case "$(uname -sm)" in
   "Darwin x86_64") T=darwin-x64 ;;
   "Linux x86_64")  T=linux-x64 ;;
 esac
-gh release download --repo sean5940/harness-scouter \
-  --pattern "scouter-$T.tar.gz" --pattern SHA256SUMS
+BASE=https://github.com/sean5940/harness-scouter/releases/latest/download
+curl -fsSLO "$BASE/scouter-$T.tar.gz"
+curl -fsSLO "$BASE/SHA256SUMS"
 tar xzf "scouter-$T.tar.gz"
 shasum -a 256 -c SHA256SUMS 2>/dev/null | grep OK
 ./scouter status --all
@@ -207,9 +208,9 @@ A session that fixed nothing and only repeated index searches really does come o
 A mapping table goes stale sooner or later. So it also measures how much of what is observed the profile covers.
 
 ```
-60,584 tool calls observed
-  mapped to a capability  60,577  100.0%
-  unmapped                     7    0.0%
+71,727 tool calls observed
+  mapped to a capability  71,714  100.0%
+  unmapped                    13    0.0%
 ```
 
 **When coverage drops under 90% it does not give a score, it shows what was not caught.** Someone else's harness does not come out at 0, it comes out as "`read_file` is unknown".

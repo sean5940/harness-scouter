@@ -8,34 +8,34 @@
 
 ```
   HARNESS SCOUTER  all-time         Lv. 71  B
-  2026-07-02 ~ 2026-08-04 · 349 sessions · 29 history windows · coverage 83%
+  2026-07-02 ~ 2026-08-10 · 366 sessions · 30 history windows · coverage 82%
   ────────────────────────────────────────────────────────────────────────────────
-  Retrieval          █████████████░░░░░░░░░░░  53  C   typical   46~59  best  67
-      File-finding discipline     21   n= 1548
-      Index-first retrieval       46   n= 5114
-      Evidence before edit        92   n= 1684
-  Verification       ███████████████████░░░░░  81  A   typical   74~89  best  99
-      Pre-commit check freshness  84   n=  397
-      No redundant checks         79   n= 2016
-  Delivery           █████████████████████░░░  88  A   typical   87~93  best  98
-      Reached an artifact         94   n=  170  (display)
-      No rework                   88   n= 6123
+  Retrieval          ████████████░░░░░░░░░░░░  52  C   typical   46~59  best  67
+      File-finding discipline     21   n= 1604
+      Index-first retrieval       45   n= 5608
+      Evidence before edit        91   n= 1861
+  Verification       ████████████████████░░░░  81  A   typical   75~89  best  99
+      Pre-commit check freshness  84   n=  415
+      No redundant checks         78   n= 2131
+  Delivery           █████████████████████░░░  88  A   typical   86~93  best  98
+      Reached an artifact         91   n=  178  (display)
+      No rework                   88   n= 6774
   Autonomy           ██████████████████████░░  90  S   typical   85~96  best 100
-      No human intervention       90   n=73629
-  Discipline         ████████████████░░░░░░░░  66  B   typical   70~79  best  93
-      Instrumented-channel use    61   n= 9985
-      No repeat gate hits         70   n= 2015
+      No human intervention       90   n=78760
+  Discipline         ████████████████░░░░░░░░  65  B   typical   69~78  best  93
+      Instrumented-channel use    59   n=11414
+      No repeat gate hits         71   n= 2142
   Context efficiency ████████████████░░░░░░░░  68  B   typical   64~72  best  83
-      Read-scope discipline       58   n= 2473
-      Recall of what was read     92   n=12964
-      Response brevity            54   n=22949
-      Context lightness           65   n=47204
+      Read-scope discipline       60   n= 2765
+      Recall of what was read     92   n=13977
+      Response brevity            56   n=25391
+      Context lightness           64   n=51374
   ────────────────────────────────────────────────────────────────────────────────
-  Overall 71.2 · B  (6.8p to the nearest grade cut)
+  Overall 70.9 · B  (7.1p to the nearest grade cut)
   All-time aggregate, so grades come from absolute scores. Drop --all for per-period grades.
 ```
 
-数字そのものより**どの構成要素がボトルネックか**が役に立ちます。上の画面で探索力53を作ったのは `ファイル探索の規律 21` ひとつだけで、それを直せば探索力は53から72まで上がります。実際にこのツールを作りながらそう使いました。
+数字そのものより**どの構成要素がボトルネックか**が役に立ちます。上の画面で探索力52を作ったのは `ファイル探索の規律 21` ひとつだけで、それを直せば探索力は52から78まで上がります。実際にこのツールを作りながらそう使いました。
 
 このスコアが実際の品質と相関するという外部の根拠はまだありません。[既知の限界](#既知の限界)を先に読めば、どこまで信じてよいかを判断できます。
 
@@ -45,7 +45,7 @@
 
 三つの流れが別々に回ります。
 
-**行動パイプライン**はトランスクリプトから事実だけを抜いて SQLite に入れ、スコアは毎回計算し直します。定義を直すときに890MBを再パースしないための構造です。`db.ts` にスコアがないのはそのためです。
+**行動パイプライン**はトランスクリプトから事実だけを抜いて SQLite に入れ、スコアは毎回計算し直します。定義を直すときに940MBを再パースしないための構造です。`db.ts` にスコアがないのはそのためです。
 
 **ハーネス構造スキャン**はリポジトリからセンサーとガイドの一覧を読みます。行動だけを見ても「ブロック0件」がセンサーが良いからなのか、そもそも無いからなのかが分かれないからです。軸の名前は Martin Fowler の [harness engineering](https://martinfowler.com/articles/harness-engineering.html) から取りました。
 
@@ -56,8 +56,8 @@
 すべてローカルにあります。何も外に出ません。例外は `scouter outcomes` ひとつだけで、このときだけ `gh` で GitHub に PR の一覧を問い合わせます。
 
 ```
-~/.claude/projects/**/*.jsonl   読み取り専用の入力。890MB
-~/.harness-scouter/scouter.sqlite   事実テーブル。170MB
+~/.claude/projects/**/*.jsonl   読み取り専用の入力。940MB
+~/.harness-scouter/scouter.sqlite   事実テーブル。218MB
 ~/.harness-scouter/labels.jsonl     人が付けたラベル
 ```
 
@@ -71,15 +71,15 @@ DB には**パースした事実だけ**が入ります。スコアはありま�
 
 | テーブル        | 入れるもの                                                               | 行数(例) |
 | --------------- | ------------------------------------------------------------------------ | -------- |
-| `session`       | セッションメタ。プロジェクト・ブランチ・モデル・エントリポイント         | 424      |
-| `tool_call`     | ツール呼び出し。名前・コマンド・ファイルパス・ブロック有無・エージェント | 60,584   |
-| `tool_result`   | ツール結果。読んだ行数・編集の種類・stdout の末尾                        | 57,748   |
-| `usage`         | 応答ごとのトークン。リクエスト単位で重複排除                             | 46,241   |
-| `session_event` | 中断・キュー割り込み・ツール拒否                                         | 4,283    |
-| `artifact`      | コミット・PR・コミットハッシュ                                           | 1,387    |
-| `file_cursor`   | ファイルごとの mtime とバイト位置                                        | 1,527    |
+| `session`       | セッションメタ。プロジェクト・ブランチ・モデル・エントリポイント         | 609      |
+| `tool_call`     | ツール呼び出し。名前・コマンド・ファイルパス・ブロック有無・エージェント | 71,727   |
+| `tool_result`   | ツール結果。読んだ行数・編集の種類・stdout の末尾                        | 71,719   |
+| `usage`         | 応答ごとのトークン。リクエスト単位で重複排除                             | 56,954   |
+| `session_event` | 中断・キュー割り込み・ツール拒否                                         | 4,997    |
+| `artifact`      | コミット・PR・コミットハッシュ                                           | 1,473    |
+| `file_cursor`   | ファイルごとの mtime とバイト位置                                        | 2,099    |
 
-**軸のスコアを保存しないことが設計の核心です。** 指標の定義がよく変わるのに、定義を直すたびに890MBを再パースしなければならないなら、反復の周期が壊れます。事実だけを貯めておいて、軸は毎回計算します。
+**軸のスコアを保存しないことが設計の核心です。** 指標の定義がよく変わるのに、定義を直すたびに940MBを再パースしなければならないなら、反復の周期が壊れます。事実だけを貯めておいて、軸は毎回計算します。
 
 ### 消しても大丈夫です
 
@@ -87,7 +87,7 @@ DB はいつでも捨てて作り直せます。トランスクリプトが原�
 
 ```bash
 rm ~/.harness-scouter/scouter.sqlite*
-npm run scouter -- scan     # 890MB 全体を再パース、8秒
+npm run scouter -- scan     # 940MB 全体を再パース、8秒
 ```
 
 増分スキャンはファイルごとの mtime とバイト位置を覚えていて、新しく付いた行だけを読みます。変わったものがなければ1秒以内に終わります。
@@ -106,7 +106,7 @@ npm run scouter -- scan     # 890MB 全体を再パース、8秒
 | macOS (Intel)         | `scouter-darwin-x64.tar.gz`   |
 | Linux (x86_64)        | `scouter-linux-x64.tar.gz`    |
 
-**このリポジトリは private です。** 匿名の `curl` では取得できないので、`gh` で認証して取得します。
+公開リポジトリなので認証なしで取得できます。`latest` は常に最新のリリースを指します。
 
 ```bash
 case "$(uname -sm)" in
@@ -114,8 +114,9 @@ case "$(uname -sm)" in
   "Darwin x86_64") T=darwin-x64 ;;
   "Linux x86_64")  T=linux-x64 ;;
 esac
-gh release download --repo sean5940/harness-scouter \
-  --pattern "scouter-$T.tar.gz" --pattern SHA256SUMS
+BASE=https://github.com/sean5940/harness-scouter/releases/latest/download
+curl -fsSLO "$BASE/scouter-$T.tar.gz"
+curl -fsSLO "$BASE/SHA256SUMS"
 tar xzf "scouter-$T.tar.gz"
 shasum -a 256 -c SHA256SUMS 2>/dev/null | grep OK
 ./scouter status --all
@@ -207,9 +208,9 @@ $ scouter status --lang klingon
 マッピング表はいつでも古くなります。そのため、プロファイルが観測をどれだけ覆っているかも一緒に測ります。
 
 ```
-観測したツール呼び出し 60,584件
-  能力にマッピング済み  60,577  100.0%
-  未マッピング               7    0.0%
+観測したツール呼び出し 71,727件
+  能力にマッピング済み  71,714  100.0%
+  未マッピング              13    0.0%
 ```
 
 **カバレッジが90%を下回るとスコアを出さず、何が捕まえられなかったかを見せます。** 他人のハーネスで0点が出るのではなく、「`read_file` を知りません」が出ます。
