@@ -47,6 +47,7 @@ import {
 } from "@harness-scouter/core";
 
 import { parseArgs } from "./args.js";
+import { guardBrokenPipe } from "./stdio.js";
 import { VERSION } from "./version.js";
 
 /**
@@ -1172,6 +1173,9 @@ async function main(): Promise<void> {
   );
   process.exitCode = 1;
 }
+
+// 첫 줄을 쓰기 전에 걸어야 한다. head 는 세 줄 만에 파이프를 닫는다.
+guardBrokenPipe(process.stdout, () => process.exit(0));
 
 main().catch((error: unknown) => {
   // 여기서는 플래그를 못 읽으므로 환경 기준 언어로 낸다.
