@@ -8,4 +8,4 @@
  * 까지 딸려와 vitest 가 모듈을 못 풀기 때문이다. 상수 하나를 확인하려고 DB 계층 전체를
  * 끌어올 이유가 없다.
  */
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";
