@@ -30,6 +30,7 @@ import {
   adviseAll,
   renderStatHtml,
   runGate,
+  verdictMark,
   renderDiagnosisHtml,
   defaultDbPath,
   defaultTranscriptRoot,
@@ -946,18 +947,23 @@ async function main(): Promise<void> {
       );
       for (const c of axis.checks) {
         process.stdout.write(
-          `        ${c.passed ? "o" : "X"} ${padEndW(t(c.name, lang), cols.gateName)} ${padEndW(c.value, cols.gateValue)} ${t(c.criterion, lang)}\n`,
+          `        ${verdictMark(c.verdict)} ${padEndW(t(c.name, lang), cols.gateName)} ${padEndW(c.value, cols.gateValue)} ${t(c.criterion, lang)}\n`,
         );
       }
       process.stdout.write("\n");
     }
-    const dependent = gate.correlations.filter((c) => !c.independent);
+    const dependent = gate.correlations.filter((c) => c.independence === "fail");
+    // 계산 불가를 독립 쪽에 접으면 "모든 쌍이 독립"이라는 문장이 재보지도 못한 쌍까지
+    // 덮는다. 따로 세서 따로 적는다.
+    const uncomputable = gate.correlations.filter(
+      (c) => c.independence === "not-computable",
+    );
     process.stdout.write(
       dependent.length === 0
         ? say(
             lang,
-            "  축 독립성: 모든 쌍 |rho| <= 0.6\n",
-            "  Axis independence: every pair |rho| <= 0.6\n",
+            "  축 독립성: 판정된 쌍은 모두 |rho| <= 0.6\n",
+            "  Axis independence: every judged pair |rho| <= 0.6\n",
           )
         : say(
             lang,
@@ -971,6 +977,21 @@ async function main(): Promise<void> {
               )
               .join(""),
     );
+    if (uncomputable.length > 0) {
+      process.stdout.write(
+        say(
+          lang,
+          `  축 독립성 계산 불가 ${uncomputable.length}쌍 — 한쪽이 상수이거나 점수 있는 구간이 3개 미만입니다. 독립으로 세지 않습니다:\n`,
+          `  ${uncomputable.length} pairs not computable — one side is constant, or there are fewer than 3 scored periods. Not counted as independent:\n`,
+        ) +
+          uncomputable
+            .map(
+              (c) =>
+                `        ${t(AXIS_LABELS[c.a], lang)} ~ ${t(AXIS_LABELS[c.b], lang)}\n`,
+            )
+            .join(""),
+      );
+    }
     const allTime = gate.axes.filter((a) => a.supportsAllTime).length;
     const perPeriod = gate.axes.filter((a) => a.supportsPerPeriod).length;
     process.stdout.write(

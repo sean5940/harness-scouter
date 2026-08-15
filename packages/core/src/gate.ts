@@ -27,6 +27,23 @@ export type GateCheckKey =
   | "denominator-survival"
   | "variance-components";
 
+/**
+ * 검사 판정.
+ *
+ * 통과·미달 둘로만 내면 "재보지 못했다"를 둘 중 하나에 섞어야 한다. 초판은 그것을
+ * 통과 쪽에 섞었고(`Number.isNaN(r) || …`), 그래서 상수열이라 상관을 못 낸 축이
+ * 길이 교란을 통과했다고 보고했다. 재보지 못한 것은 통과가 아니다.
+ *
+ * 판정을 읽는 자리가 여럿이라(축 표, 화면 지지 집계, MCP 표) 한 곳에서만 세 번째
+ * 값을 알아보면 나머지에서 다시 통과로 접힌다. 소비하는 자리를 전부 이 타입으로 건다.
+ */
+export type GateVerdict = "pass" | "fail" | "not-computable";
+
+/** 표에 찍는 기호. 화면마다 따로 매핑하면 한쪽만 세 번째 판정을 잃는다. */
+export function verdictMark(verdict: GateVerdict): string {
+  return verdict === "pass" ? "o" : verdict === "fail" ? "X" : "?";
+}
+
 export interface GateCheck {
   /**
    * 표시와 무관한 식별자.
@@ -37,7 +54,7 @@ export interface GateCheck {
    */
   key: GateCheckKey;
   name: Localized;
-  passed: boolean;
+  verdict: GateVerdict;
   /**
    * 수치와 설명이 섞인 값이라 언어를 고른 뒤 조립한다.
    *
@@ -79,7 +96,13 @@ export interface GateResult {
     a: AxisKey;
     b: AxisKey;
     r: number;
-    independent: boolean;
+    /**
+     * 독립성 판정. pass 가 독립이다.
+     *
+     * 상수 축은 상관을 낼 수 없어 not-computable 이고, 그것은 독립의 근거가 아니다.
+     * 초판은 이 자리도 NaN 을 독립으로 셌다.
+     */
+    independence: GateVerdict;
   }>;
   periodCount: number;
 }
@@ -126,12 +149,32 @@ function pearson(xs: number[], ys: number[]): number {
   return dx === 0 || dy === 0 ? NaN : num / Math.sqrt(dx * dy);
 }
 
-function ranks(values: number[]): number[] {
+/**
+ * 동점에는 평균 순위를 준다.
+ *
+ * 정렬 순서대로 1..n 을 매기면 상수열이 완전한 오름차순이 되어, 상관을 낼 수 없는 축이
+ * 그럴듯한 상관을 낸다. 실측에서 상수인 두 축의 쌍이 rho=1.000 으로 잡혀 축 독립성 검사를
+ * 통째로 빠져나갔다. 중복 신호일 가능성이 가장 큰 것이 바로 상수 축이다.
+ *
+ * 동점을 동점으로 매기면 상수열은 분산이 0 이라 상관이 계산 불가로 나온다.
+ * 동점 처리 자체를 되짚을 수 있게 내보낸다.
+ */
+export function ranks(values: number[]): number[] {
   const indexed = values.map((v, i) => ({ v, i })).sort((a, b) => a.v - b.v);
   const out = new Array<number>(values.length).fill(0);
-  for (let i = 0; i < indexed.length; i += 1) {
-    const entry = indexed[i];
-    if (entry !== undefined) out[entry.i] = i + 1;
+  let start = 0;
+  while (start < indexed.length) {
+    const head = indexed[start];
+    if (head === undefined) break;
+    let end = start;
+    while (end + 1 < indexed.length && indexed[end + 1]?.v === head.v) end += 1;
+    // 동점 구간 [start, end] 에 걸린 1-based 순위의 평균.
+    const midrank = (start + end) / 2 + 1;
+    for (let k = start; k <= end; k += 1) {
+      const entry = indexed[k];
+      if (entry !== undefined) out[entry.i] = midrank;
+    }
+    start = end + 1;
   }
   return out;
 }
@@ -751,7 +794,7 @@ export function runGate(
       {
         key: "saturation",
         name: L("포화", "Saturation"),
-        passed: spread > 0.069,
+        verdict: spread > 0.069 ? "pass" : "fail",
         value: `p05~p95 ${spread.toFixed(3)}`,
         criterion: L(
           "> 0.069 (cache_read를 죽인 값)",
@@ -761,7 +804,7 @@ export function runGate(
       {
         key: "density",
         name: L("분모 밀도", "Denominator density"),
-        passed: denMedian >= PERIOD_BUDGET[axis],
+        verdict: denMedian >= PERIOD_BUDGET[axis] ? "pass" : "fail",
         value: `median ${denMedian.toFixed(0)}`,
         criterion: L(
           `>= 예산 ${PERIOD_BUDGET[axis]}`,
@@ -777,7 +820,7 @@ export function runGate(
       {
         key: "variance-components",
         name: L("분산 성분(처방)", "Variance components (prescription)"),
-        passed: true,
+        verdict: "pass",
         value:
           variance === null
             ? t(L("관측 부족", "not enough observations"), lang)
@@ -802,7 +845,7 @@ export function runGate(
         name: L("split-half", "split-half"),
         // 판정은 순열 중앙값으로 한다. 분포의 상단을 보고 임계를 느슨하게 하고 싶어지는데,
         // 그러면 게이트가 아니라 통과시킬 이유를 찾는 장치가 된다.
-        passed: permuted !== null && permuted.median >= 0.5,
+        verdict: permuted !== null && permuted.median >= 0.5 ? "pass" : "fail",
         value:
           permuted === null
             ? t(NOT_COMPUTABLE, lang)
@@ -826,7 +869,7 @@ export function runGate(
       {
         key: "cross-period",
         name: L("구간 간 예측력(표시)", "Cross-period predictivity (display)"),
-        passed: true,
+        verdict: "pass",
         value: Number.isNaN(rLag1)
           ? t(NOT_COMPUTABLE, lang)
           : `lag-1 r=${rLag1.toFixed(3)} ` +
@@ -845,7 +888,7 @@ export function runGate(
       {
         key: "personal-best",
         name: L("개인최고 도달성", "Personal-best reachability"),
-        passed: bestIsReachable,
+        verdict: bestIsReachable ? "pass" : "fail",
         value:
           bestPeriod === null
             ? t(L("점수 있는 구간 없음", "no scored period"), lang)
@@ -870,7 +913,13 @@ export function runGate(
       {
         key: "length-confound",
         name: L("길이 교란", "Length confound"),
-        passed: Number.isNaN(rLength) || Math.abs(rLength) < 0.5,
+        // 상관을 못 낸 것과 임계 안에 든 것을 한 값으로 내면 안 된다. 상수열이거나
+        // 모든 구간에서 분모가 0 이면 rho 가 NaN 이고, 그건 통과가 아니라 미측정이다.
+        verdict: Number.isNaN(rLength)
+          ? "not-computable"
+          : Math.abs(rLength) < 0.5
+            ? "pass"
+            : "fail",
         value: Number.isNaN(rLength)
           ? t(NOT_COMPUTABLE, lang)
           : rLength.toFixed(3),
@@ -883,7 +932,7 @@ export function runGate(
       {
         key: "gaming-shift",
         name: L("조작 이동(표시)", "Gaming shift (display)"),
-        passed: true,
+        verdict: "pass",
         value:
           worst === null
             ? t(NO_SCENARIO, lang)
@@ -915,7 +964,8 @@ export function runGate(
       {
         key: "ceiling-unreachable",
         name: L("상한 도달 불가", "Ceiling unreachable"),
-        passed: worst !== null && worst.shift < 1 - baseline - 1e-9,
+        verdict:
+          worst !== null && worst.shift < 1 - baseline - 1e-9 ? "pass" : "fail",
         value:
           worst === null
             ? t(
@@ -947,11 +997,12 @@ export function runGate(
       {
         key: "denominator-survival",
         name: L("분모 생존", "Denominator survival"),
-        passed:
-          worst === null
-            ? false
-            : worst.denAfter >= PERIOD_BUDGET[axis] &&
-              worst.scoredPeriods >= scores.length,
+        verdict:
+          worst !== null &&
+          worst.denAfter >= PERIOD_BUDGET[axis] &&
+          worst.scoredPeriods >= scores.length
+            ? "pass"
+            : "fail",
         value:
           worst === null
             ? t(NO_SCENARIO, lang)
@@ -978,10 +1029,13 @@ export function runGate(
       // 분산 성분은 판정이 아니라 처방이라 화면 지원 여부를 가르지 않는다.
       "variance-components",
     ]);
+    // 화면을 뒷받침하려면 통과여야 한다. 계산 불가는 미달과 달리 "재보지 못했다"는
+    // 뜻이지만, 재보지 못한 것도 지지 근거는 못 된다. 무엇이 없어서 못 받쳤는지는
+    // 검사 표의 판정이 보여준다.
     const supportsAllTime = checks
       .filter((c) => !PER_PERIOD_ONLY.has(c.key))
-      .every((c) => c.passed);
-    const supportsPerPeriod = checks.every((c) => c.passed);
+      .every((c) => c.verdict === "pass");
+    const supportsPerPeriod = checks.every((c) => c.verdict === "pass");
 
     return {
       axis,
@@ -1012,7 +1066,13 @@ export function runGate(
         a,
         b,
         r,
-        independent: Number.isNaN(r) || Math.abs(r) <= 0.6,
+        // 여기도 NaN 을 독립으로 세고 있었다. 상수 축이면 상관이 안 나오는데, 그것을
+        // 독립으로 접으면 중복 신호일 가능성이 가장 큰 축이 검사를 통째로 빠져나간다.
+        independence: Number.isNaN(r)
+          ? "not-computable"
+          : Math.abs(r) <= 0.6
+            ? "pass"
+            : "fail",
       });
     }
   }
