@@ -251,6 +251,15 @@ describe("계산 불가 판정", () => {
 });
 
 describe("길이 교란의 짝짓기", () => {
+  it("점수 없는 구간이 중간에 있어도 같은 구간의 세션 수와 짝짓는다", () => {
+    // 제대로 짝지으면 0.1·0.2·0.3·0.4 와 4·5·6·7 이라 rho 는 1 이다.
+    // 앞에서 자르면 4·40·5·6 과 짝지어져 0.400 이 나오고 판정까지 통과로 뒤집힌다.
+    const gate = gateOf(middleNullCorpus());
+    const check = checkOf(gate, "verificationFreshness", "length-confound");
+    expect(check.value).toBe("1.000");
+    expect(check.verdict).toBe("fail");
+  });
+
   it("빠진 구간이 없는 축은 값도 판정도 그대로다", () => {
     // 대조군. readScope 는 다섯 구간 전부에 점수가 있어 짝짓기가 원래 맞았다.
     const gate = gateOf(middleNullCorpus());

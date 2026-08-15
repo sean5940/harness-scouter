@@ -183,10 +183,23 @@ function spearman(xs: number[], ys: number[]): number {
   return pearson(ranks(xs), ranks(ys));
 }
 
-function scoresOf(periods: Period[], axis: AxisKey): number[] {
+/**
+ * 점수가 있는 구간만, 그 구간을 달고 남긴다.
+ *
+ * 점수만 돌려주면 호출부가 구간별 배열을 앞에서 잘라 짝을 맞추게 된다. 점수 없는 구간이
+ * 중간에 하나라도 있으면 그 뒤의 짝이 전부 한 칸씩 밀려, 각 점수가 다른 구간의 세션 수와
+ * 상관된다. 짝을 만든 자리에서 함께 들고 다니면 나중에 누가 더 걸러도 어긋나지 않는다.
+ */
+function scoredPeriodsOf(
+  periods: Period[],
+  axis: AxisKey,
+): Array<{ period: Period; score: number }> {
   return periods
-    .map((p) => axisScore(axis, p.axes[axis]))
-    .filter((v): v is number => v !== null && Number.isFinite(v));
+    .map((period) => ({ period, score: axisScore(axis, period.axes[axis]) }))
+    .filter(
+      (r): r is { period: Period; score: number } =>
+        r.score !== null && Number.isFinite(r.score),
+    );
 }
 
 /**
@@ -678,10 +691,9 @@ export function runGate(
   const periods = segmentIntoPeriods(forPeriods).filter((p) => !p.open);
   const bySession = new Map(sessions.map((s) => [s.sessionId, s]));
 
-  const sessionSizes = periods.map((p) => p.sessionIds.length);
-
   const axes: AxisGate[] = AXIS_ORDER.map((axis) => {
-    const scores = scoresOf(periods, axis);
+    const scored = scoredPeriodsOf(periods, axis);
+    const scores = scored.map((r) => r.score);
     const sorted = [...scores].sort((a, b) => a - b);
     const spread = quantile(sorted, 0.95) - quantile(sorted, 0.05);
 
@@ -709,7 +721,12 @@ export function runGate(
     // Spearman-Brown: 반쪽 상관을 전체 길이 신뢰도로 올린다.
     const reliability = Number.isNaN(rHalf) ? NaN : (2 * rHalf) / (1 + rHalf);
 
-    const rLength = spearman(scores, sessionSizes.slice(0, scores.length));
+    // 세션 수는 그 점수를 낸 구간에서 뽑는다. 전 구간 배열을 앞에서 자르면 점수 없는
+    // 구간 뒤로 짝이 밀린다.
+    const rLength = spearman(
+      scores,
+      scored.map((r) => r.period.sessionIds.length),
+    );
 
     // 구간 간 안정성. delta 표시가 성립하려면 이웃 구간이 서로를 예측해야 한다.
     // 0에 가까우면 구간별 변화가 신호가 아니라 잡음이다.
