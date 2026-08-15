@@ -32,6 +32,7 @@ import {
   summarizeHarness,
   t,
   tList,
+  verdictMark,
   ScouterDb,
   type Lang,
 } from "@harness-scouter/core";
@@ -222,7 +223,9 @@ function gateText(): string {
       : "neither";
     lines.push(`${axis.axis}  ${support}`);
     for (const c of axis.checks) {
-      lines.push(`    ${c.passed ? "o" : "X"} ${t(c.name, lang)}  ${c.value}`);
+      lines.push(
+        `    ${verdictMark(c.verdict)} ${t(c.name, lang)}  ${c.value}`,
+      );
     }
   }
   return lines.join("\n");
