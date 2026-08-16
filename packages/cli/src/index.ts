@@ -30,7 +30,11 @@ import {
   adviseAll,
   renderStatHtml,
   runGate,
+  runStratificationExperiment,
+  sensitivityOf,
   verdictMark,
+  WORK_TYPES,
+  WORK_TYPE_LABELS,
   renderDiagnosisHtml,
   defaultDbPath,
   defaultTranscriptRoot,
@@ -135,6 +139,7 @@ const USAGE: Localized = L(
   scouter harness [--root <path>]               하네스 구조(센서·가이드)를 스캔한다
   scouter outcomes [--root <path>]              PR 결과를 모아 신호 변별력을 본다
   scouter gate [--db <path>]                    M0.5 재현성 게이트를 돌린다
+  scouter strata [--db <path>]                  split-half 를 작업 유형 층 안에서 다시 돌려 본다
   scouter json [--db <path>]                    확장이 읽을 JSON을 낸다
   scouter html [--db <path>] [--out <path>] [--all] [--diag] [--root <path>]
                                                 스테이터스 창을 HTML로 낸다 (--diag 면 누수 진단)
@@ -154,6 +159,7 @@ const USAGE: Localized = L(
   scouter harness [--root <path>]                 Scan the harness structure (sensors, guides)
   scouter outcomes [--root <path>]                Collect PR results and look at signal spread
   scouter gate [--db <path>]                      Run the M0.5 reproducibility gate
+  scouter strata [--db <path>]                    Re-run split-half inside work-type strata
   scouter json [--db <path>]                      Emit the JSON the extension reads
   scouter html [--db <path>] [--out <path>] [--all] [--diag] [--root <path>]
                                                   Emit the stat window as HTML (--diag for leak diagnosis)
@@ -1013,6 +1019,161 @@ async function main(): Promise<void> {
       );
     }
     db.close();
+    return;
+  }
+
+  if (command === "strata") {
+    const db = openDb(flags);
+    const result = analyze(db);
+    const experiment = runStratificationExperiment(
+      result.sessions,
+      result.forPeriods,
+      result.workload,
+    );
+    db.close();
+
+    const base = experiment.variants[0];
+    if (base === undefined) {
+      process.stdout.write(`${noClosedPeriod}\n`);
+      return;
+    }
+
+    const cols = COLUMNS[lang];
+    process.stdout.write(
+      say(
+        lang,
+        `\n  층화 실험 — split-half 가 쓸 수 있는 구간 ${experiment.usablePeriods}개 · 세션 ${experiment.sessionCount}개\n\n`,
+        `\n  Stratification experiment — ${experiment.usablePeriods} periods usable by split-half · ${experiment.sessionCount} sessions\n\n`,
+      ),
+    );
+
+    if (experiment.usablePeriods < 3) {
+      // 구간이 모자라면 층화 전도 못 낸다. 표를 빈칸으로 그리면 "층화가 효과 없다"로 읽힌다.
+      process.stdout.write(
+        say(
+          lang,
+          `  세션 ${PERIOD_MIN_SESSIONS}개 이상인 구간이 3개는 있어야 순열 split-half 를 냅니다. 더 쓰신 뒤 다시 보세요.\n`,
+          `  The permuted split-half needs at least 3 periods with enough sessions. Come back after more sessions.\n`,
+        ),
+      );
+      return;
+    }
+
+    process.stdout.write(
+      say(
+        lang,
+        `  층 분포 (기본 임계 새 파일 비중 ${base.thresholds.createShare.toFixed(2)} · 검증 하한 ${base.thresholds.verifyMin})\n`,
+        `  Strata (default thresholds: create share ${base.thresholds.createShare.toFixed(2)} · verify floor ${base.thresholds.verifyMin})\n`,
+      ),
+    );
+    process.stdout.write(
+      "    " +
+        WORK_TYPES.map(
+          (k) => `${t(WORK_TYPE_LABELS[k], lang)} ${base.sizes[k]}`,
+        ).join("  ·  ") +
+        "\n\n",
+    );
+
+    if (base.occupiedStrata < 2) {
+      process.stdout.write(
+        say(
+          lang,
+          "  세션이 한 층에 다 들어갔습니다. 층화가 가르는 것이 없어 아래 표는 층화 전과 같습니다.\n\n",
+          "  Every session landed in one stratum. Stratification splits nothing, so the table below equals the unstratified run.\n\n",
+        ),
+      );
+    }
+
+    process.stdout.write(
+      "  " +
+        padEndW(say(lang, "축", "Axis"), cols.axisLabel) +
+        padStartW(say(lang, "층화 전", "Plain"), 10) +
+        padStartW(say(lang, "층화 후", "Stratified"), 12) +
+        padStartW(say(lang, "이동", "Shift"), 9) +
+        padStartW(say(lang, "판정", "Verdict"), 10) +
+        "\n",
+    );
+    const num = (v: number | null | undefined): string =>
+      v === null || v === undefined ? "—" : v.toFixed(3);
+    for (const row of base.axes) {
+      const shift =
+        row.delta === null
+          ? "—"
+          : `${row.delta >= 0 ? "+" : ""}${row.delta.toFixed(3)}`;
+      process.stdout.write(
+        "  " +
+          padEndW(t(AXIS_LABELS[row.axis], lang), cols.axisLabel) +
+          padStartW(num(row.plain?.median), 10) +
+          padStartW(num(row.stratified?.median), 12) +
+          padStartW(shift, 9) +
+          padStartW(
+            `${verdictMark(row.verdictBefore)} → ${verdictMark(row.verdictAfter)}`,
+            10,
+          ) +
+          "\n",
+      );
+    }
+
+    process.stdout.write(
+      say(
+        lang,
+        `\n  임계 민감도 — 변형 ${experiment.variants.length}개\n`,
+        `\n  Threshold sensitivity — ${experiment.variants.length} variants\n`,
+      ),
+    );
+    process.stdout.write(
+      "  " +
+        padEndW(say(lang, "축", "Axis"), cols.axisLabel) +
+        padStartW(say(lang, "이동 범위", "Shift range"), 20) +
+        padStartW(say(lang, "부호 일정", "Sign stable"), 14) +
+        padStartW(say(lang, "판정 뒤집힘", "Flipped"), 14) +
+        "\n",
+    );
+    const sensitivity = sensitivityOf(experiment);
+    for (const s of sensitivity) {
+      const range =
+        s.min === null || s.max === null
+          ? "—"
+          : `${s.min >= 0 ? "+" : ""}${s.min.toFixed(3)} ~ ${s.max >= 0 ? "+" : ""}${s.max.toFixed(3)}`;
+      process.stdout.write(
+        "  " +
+          padEndW(t(AXIS_LABELS[s.axis], lang), cols.axisLabel) +
+          padStartW(range, 20) +
+          // 못 낸 축에 X 를 찍으면 "부호가 흔들렸다"로 읽힌다. 안 흔들린 것이 아니라
+          // 재보지 못한 것이라, 게이트의 계산 불가와 같은 자리에 둔다.
+          padStartW(s.min === null ? "—" : s.signStable ? "o" : "X", 14) +
+          padStartW(`${s.flipped}/${experiment.variants.length}`, 14) +
+          "\n",
+      );
+    }
+
+    // 무엇을 읽어야 하는지 적는다. 이 표는 점수가 아니라 한 번의 대조라, 어느 방향으로
+    // 나오면 무엇을 해야 하는지가 표 안에 안 들어 있다.
+    const raised = sensitivity.filter(
+      (s) => s.signStable && (s.min ?? 0) > 0,
+    ).length;
+    process.stdout.write(
+      say(
+        lang,
+        `\n  부호가 일정하게 올라간 축 ${raised}/${sensitivity.length}\n\n` +
+          "  올라갔다면 구간 점수를 흔든 것은 축이 아니라 반쪽마다 달라지는 작업 구성입니다.\n" +
+          "  고정 태스크 셋(프로브)으로 작업 구성을 상수로 만들면 같은 축이 살아납니다.\n" +
+          "  안 올라갔다면 원인은 작업 구성이 아니므로, 프로브를 만들어도 이 축은 안 살아납니다.\n" +
+          "  부호가 변형마다 갈리면 읽지 마세요. 층화가 아니라 임계가 만든 값입니다.\n\n" +
+          "  이 실험은 게이트 판정을 바꾸지 않습니다. 분류기가 아직 검증되지 않은\n" +
+          "  임의 임계 위에 서 있어서, 이것으로 통과선을 옮기면 통과할 이유를 찾아\n" +
+          "  기준을 고친 것이 됩니다.\n",
+        `\n  Axes that rose with a stable sign: ${raised}/${sensitivity.length}\n\n` +
+          "  If they rose, what moved the period scores was not the axis but the work mix that\n" +
+          "  differs between halves. Pinning the work mix with a fixed task set (a probe) revives\n" +
+          "  those axes. If they did not rise, the work mix is not the cause and a probe will not\n" +
+          "  revive them. If the sign flips across variants, do not read the number — it came from\n" +
+          "  the threshold, not from stratification.\n\n" +
+          "  This experiment does not change the gate verdict. The classifier still rests on\n" +
+          "  arbitrary, unvalidated thresholds, and moving the pass line with it would be\n" +
+          "  editing the standard to find a reason to pass.\n",
+      ),
+    );
     return;
   }
 

@@ -7,6 +7,7 @@ import {
   type PeriodReport,
   type SessionForPeriod,
 } from "./periods.js";
+import { summarizeWorkload, type WorkloadCounts } from "./worktype.js";
 
 export interface AnalysisFilter {
   /** 프로젝트 경로 부분 일치. 지정하지 않으면 전체를 본다. */
@@ -21,6 +22,13 @@ export interface Analysis {
   latest: PeriodReport | null;
   /** 진행 중 구간을 뺀, 비교에 쓸 수 있는 마지막 구간의 보고 */
   latestClosed: PeriodReport | null;
+  /**
+   * 세션별 작업 유형 집계. 층화 실험이 쓴다.
+   *
+   * 유형이 아니라 집계를 담는다. 임계 변형마다 유형이 달라지는데, 유형을 여기서
+   * 확정하면 변형을 돌릴 때마다 도구 호출을 다시 걸어야 한다.
+   */
+  workload: Map<string, WorkloadCounts>;
 }
 
 /** 사실 테이블에서 축을 다시 계산한다. 재파싱 없이 정의만 바꿔 돌릴 수 있어야 한다. */
@@ -28,6 +36,7 @@ export function analyze(db: ScouterDb, filter: AnalysisFilter = {}): Analysis {
   const metas = db.listSessions();
   const sessions: SessionMetrics[] = [];
   const forPeriods: SessionForPeriod[] = [];
+  const workload = new Map<string, WorkloadCounts>();
 
   for (const meta of metas) {
     if (filter.project !== undefined && !meta.project.includes(filter.project))
@@ -39,6 +48,7 @@ export function analyze(db: ScouterDb, filter: AnalysisFilter = {}): Analysis {
     const metrics = computeSessionMetrics(meta.session_id, calls);
     metrics.extras.assistantTurns = meta.assistant_turns;
     sessions.push(metrics);
+    workload.set(meta.session_id, summarizeWorkload(calls));
 
     const eventCounts = db.eventCountsOf(meta.session_id);
     const artifactKinds = db.artifactKindsOf(meta.session_id);
@@ -69,5 +79,5 @@ export function analyze(db: ScouterDb, filter: AnalysisFilter = {}): Analysis {
     }
   }
 
-  return { sessions, forPeriods, periods, latest, latestClosed };
+  return { sessions, forPeriods, periods, latest, latestClosed, workload };
 }

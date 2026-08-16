@@ -1,0 +1,135 @@
+import { describe, expect, it } from "vitest";
+
+import { AXIS_ORDER } from "../src/definitions.js";
+import { emptyAxes, emptyExtras, type SessionMetrics } from "../src/metrics.js";
+import {
+  emptyEvents,
+  emptyUsage,
+  type SessionForPeriod,
+} from "../src/periods.js";
+import { runStratificationExperiment, sensitivityOf } from "../src/stratify.js";
+import {
+  emptyWorkload,
+  WORK_TYPE_VARIANTS,
+  type WorkloadCounts,
+} from "../src/worktype.js";
+
+/**
+ * 실험의 배선을 본다. 값이 맞는지는 `stratifiedSplitHalf.test.ts` 가 아는 답으로 보고,
+ * 여기서는 층화 전 대조군이 변형마다 다시 계산되어 표마다 다른 수로 적히지 않는지를 본다.
+ * 같은 수를 두 화면이 다르게 적는 것이 이 저장소에서 반복해 나온 결함이다.
+ */
+
+/** 코드 편집만 있는 세션. 기존 수정으로 분류된다. */
+function modifyWorkload(codeEdits: number): WorkloadCounts {
+  return { ...emptyWorkload(), codeEdits };
+}
+
+/** 새 파일만 만든 세션. 신규 구현으로 분류된다. */
+function buildWorkload(codeEdits: number): WorkloadCounts {
+  return { ...emptyWorkload(), codeEdits, createdCodeFiles: codeEdits };
+}
+
+function world(sessionCount: number): {
+  sessions: SessionMetrics[];
+  forPeriods: SessionForPeriod[];
+  workload: Map<string, WorkloadCounts>;
+} {
+  const sessions: SessionMetrics[] = [];
+  const forPeriods: SessionForPeriod[] = [];
+  const workload = new Map<string, WorkloadCounts>();
+
+  for (let i = 0; i < sessionCount; i += 1) {
+    const sessionId = `s${String(i).padStart(3, "0")}`;
+    const axes = emptyAxes();
+    // 채울 수 있는 축을 하나만 둔다. 구간이 닫히는 조건이 그 축의 예산 하나가 되어
+    // 구간 크기를 세션 수로 정확히 조절할 수 있다.
+    axes.readRevisit = { num: i % 4, den: 3 };
+    const metrics: SessionMetrics = {
+      sessionId,
+      axes,
+      extras: emptyExtras(),
+      coverage: { observable: 0, offChannel: 0, opaque: 0 },
+      capability: { total: 0, mapped: 0, unmapped: {} },
+      verifierOutcomeUnknown: 0,
+      blockedCalls: 0,
+    };
+    sessions.push(metrics);
+    forPeriods.push({
+      metrics,
+      startedAt: new Date(Date.UTC(2026, 0, 1, i)).toISOString(),
+      endedAt: new Date(Date.UTC(2026, 0, 1, i, 30)).toISOString(),
+      events: emptyEvents(),
+      usage: emptyUsage(),
+      reachedArtifact: false,
+    });
+    // 층을 둘로 갈라 넣는다. 한 층에 다 들어가면 층화가 아무것도 안 가른다.
+    workload.set(sessionId, i % 2 === 0 ? modifyWorkload(4) : buildWorkload(4));
+  }
+
+  return { sessions, forPeriods, workload };
+}
+
+describe("층화 실험", () => {
+  it("임계 변형마다 한 줄씩 낸다", () => {
+    const w = world(120);
+    const e = runStratificationExperiment(w.sessions, w.forPeriods, w.workload);
+    expect(e.variants).toHaveLength(WORK_TYPE_VARIANTS.length);
+    expect(e.sessionCount).toBe(120);
+    for (const variant of e.variants) {
+      expect(variant.axes.map((a) => a.axis)).toEqual(AXIS_ORDER);
+    }
+  });
+
+  it("층화 전 대조군은 변형마다 같은 값이다", () => {
+    // 임계는 층을 바꿀 뿐 층화하지 않은 쪽을 바꾸지 않는다. 변형마다 다시 계산해
+    // 다른 수가 나오면 표를 세로로 읽을 수 없다.
+    const w = world(120);
+    const e = runStratificationExperiment(w.sessions, w.forPeriods, w.workload);
+    const first = e.variants[0];
+    expect(first).toBeDefined();
+    for (const variant of e.variants.slice(1)) {
+      variant.axes.forEach((row, i) => {
+        expect(row.plain?.median).toBe(first?.axes[i]?.plain?.median);
+      });
+    }
+  });
+
+  it("층 크기의 합이 세션 수와 같다", () => {
+    // 어느 층에도 안 들어간 세션이 있으면 층화가 일부만 보고 판정한 것이 된다.
+    const w = world(60);
+    const e = runStratificationExperiment(w.sessions, w.forPeriods, w.workload);
+    for (const variant of e.variants) {
+      const total = Object.values(variant.sizes).reduce((s, n) => s + n, 0);
+      expect(total).toBe(e.sessionCount);
+    }
+    expect(e.variants[0]?.occupiedStrata).toBe(2);
+  });
+
+  it("구간이 모자라면 축을 못 내고 그 사실이 남는다", () => {
+    // 못 낸 것을 0 으로 접으면 "층화가 효과 없다"로 읽힌다.
+    const w = world(8);
+    const e = runStratificationExperiment(w.sessions, w.forPeriods, w.workload);
+    expect(e.usablePeriods).toBeLessThan(3);
+    for (const row of e.variants[0]?.axes ?? []) {
+      expect(row.plain).toBeNull();
+      expect(row.delta).toBeNull();
+      expect(row.verdictBefore).toBe("not-computable");
+    }
+  });
+
+  it("민감도는 축마다 이동 범위와 부호 안정성을 낸다", () => {
+    const w = world(120);
+    const e = runStratificationExperiment(w.sessions, w.forPeriods, w.workload);
+    const s = sensitivityOf(e);
+    expect(s.map((x) => x.axis)).toEqual(AXIS_ORDER);
+    const measured = s.find((x) => x.axis === "readRevisit");
+    expect(measured).toBeDefined();
+    expect(measured?.min).not.toBeNull();
+    expect(measured?.max).toBeGreaterThanOrEqual(measured?.min ?? 0);
+    // 분모가 0 인 축은 delta 를 못 내므로 안정으로 세면 안 된다.
+    const unfilled = s.find((x) => x.axis === "readScope");
+    expect(unfilled?.signStable).toBe(false);
+    expect(unfilled?.min).toBeNull();
+  });
+});
