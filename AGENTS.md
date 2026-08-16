@@ -50,9 +50,15 @@
 
 매 턴 자동 적용. 다른 곳에 적지 말고 여기만 유지.
 
-- TBD: 프로젝트별 절대 규칙을 작성하세요
-- 예: 모든 신규 모델은 freezed로 작성
-- 예: BuildContext after async gap 사용 금지
+- **점수·판정을 만드는 코드는 `core` 에만 둔다.** `cli`·`mcp`·`ext` 는 받아서 그리기만 한다.
+- **같은 수를 두 자리에 적지 않는다.** 화면 둘 이상이 쓰는 임계·기호는 `core` 에서 export 해 쓴다.
+  (`SPLIT_HALF_PASS`·`MIN_SESSIONS_FOR_SPLIT_HALF`·`verdictMark`)
+- **재보지 못한 것을 통과로 세지 않는다.** 판정은 pass/fail/not-computable 3값이다.
+- **`core` 에 런타임 의존성을 넣지 않는다.** 내장 모듈로 되는지 먼저 본다.
+- **판정을 바꾸는 코드에는 아는 답이 있는 세계를 만든다.** 실측 숫자가 좋아지는 것은 검증이 아니다.
+  원인이 있는 세계와 없는 세계를 따로 만들어 앞에서만 반응하는지 본다.
+- **PR을 검사하는 CI가 없다.** 머지 전 `npm run build && npm test && npm run check:format` 을 직접 돌린다.
+- 머지는 rebase. 이력에 머지 커밋을 만들지 않는다.
 
 ## 글로벌 기본값에서의 오버라이드
 
