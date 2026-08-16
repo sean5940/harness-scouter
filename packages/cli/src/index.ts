@@ -39,6 +39,7 @@ import {
   defaultDbPath,
   defaultTranscriptRoot,
   PERIOD_MIN_SESSIONS,
+  MIN_SESSIONS_FOR_SPLIT_HALF,
   scan,
   ScouterDb,
   guardBrokenPipe,
@@ -1052,8 +1053,8 @@ async function main(): Promise<void> {
       process.stdout.write(
         say(
           lang,
-          `  세션 ${PERIOD_MIN_SESSIONS}개 이상인 구간이 3개는 있어야 순열 split-half 를 냅니다. 더 쓰신 뒤 다시 보세요.\n`,
-          `  The permuted split-half needs at least 3 periods with enough sessions. Come back after more sessions.\n`,
+          `  세션 ${MIN_SESSIONS_FOR_SPLIT_HALF}개 이상인 구간이 3개는 있어야 순열 split-half 를 냅니다. 더 쓰신 뒤 다시 보세요.\n`,
+          `  The permuted split-half needs at least 3 periods with ${MIN_SESSIONS_FOR_SPLIT_HALF} or more sessions each. Come back after more sessions.\n`,
         ),
       );
       return;
