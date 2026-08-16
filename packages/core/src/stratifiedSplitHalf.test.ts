@@ -66,7 +66,9 @@ function buildWorld(
           num: binomial(rate, denPerSession, rand),
           den: denPerSession,
         };
-        bySession.set(sid, {
+        // 캐스트를 붙이지 않는다. `SessionMetrics` 에 필수 항목이 늘면 tsc 가 여기서
+        // 막아야 한다. 캐스트로 덮으면 픽스처가 조용히 덜 찬 채로 점수만 틀리게 나온다.
+        const metrics: SessionMetrics = {
           sessionId: sid,
           axes,
           extras: emptyExtras(),
@@ -74,7 +76,8 @@ function buildWorld(
           capability: { total: 0, mapped: 0, unmapped: {} },
           verifierOutcomeUnknown: 0,
           blockedCalls: 0,
-        } as SessionMetrics);
+        };
+        bySession.set(sid, metrics);
         strata.set(sid, label);
         sessionIds.push(sid);
       }
