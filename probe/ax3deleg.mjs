@@ -34,7 +34,10 @@ for (const meta of db.listSessions()) {
         st.segLastCodeEdit = call.seq;
         st.segHasCodeEdit = true;
         if (key !== "main")
-          subagentCodeEditsSinceCommit.push({ agent: key, path: call.file_path });
+          subagentCodeEditsSinceCommit.push({
+            agent: key,
+            path: call.file_path,
+          });
       }
       continue;
     }
@@ -44,7 +47,10 @@ for (const meta of db.listSessions()) {
       st.segLastCodeEdit = call.seq;
       st.segHasCodeEdit = true;
       if (key !== "main")
-        subagentCodeEditsSinceCommit.push({ agent: key, path: call.command?.slice(0, 60) });
+        subagentCodeEditsSinceCommit.push({
+          agent: key,
+          path: call.command?.slice(0, 60),
+        });
     }
     if (kind.verifierKinds.length > 0) st.segLastVerifier = call.seq;
 
@@ -74,5 +80,10 @@ for (const meta of db.listSessions()) {
   }
 }
 
-console.log({ mainCommits, counted, droppedNoMainEdit, droppedButSubagentEdited });
+console.log({
+  mainCommits,
+  counted,
+  droppedNoMainEdit,
+  droppedButSubagentEdited,
+});
 console.log(JSON.stringify(examples, null, 2));

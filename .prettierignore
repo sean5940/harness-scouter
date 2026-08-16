@@ -1,0 +1,11 @@
+# 빌드 산출물. tsc 가 만든 것을 사람이 포맷할 일은 없다.
+dist/
+
+# docs/ 전체를 뺀다.
+#
+# 두 가지 이유가 겹친다. 첫째, 이 문서들은 YAML frontmatter 로 시작하는데 prettier 가
+# 그것을 frontmatter 로 못 알아본다. `<!-- template: ... -->` 주석이 앞에 오거나 파일이
+# 빈 줄로 시작하면 prettier 는 `---` 를 수평선으로 보고 앞뒤에 빈 줄을 넣어, frontmatter 를
+# 통째로 깨뜨린다. 둘째, briefs·reviews·retros·specs 는 시점 박제 산출물이라 본문을
+# 고치지 않는다는 규칙이 공백에도 적용된다. (AGENTS.md "산출물 처리 규칙" 참조)
+docs/

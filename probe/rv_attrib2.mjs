@@ -1,16 +1,25 @@
 import { ScouterDb } from "../packages/core/dist/db.js";
 import { classifyBash, isCodeFile } from "../packages/core/dist/definitions.js";
-const EDIT_TOOLS = new Set(["Edit","Write","NotebookEdit","MultiEdit"]);
+const EDIT_TOOLS = new Set(["Edit", "Write", "NotebookEdit", "MultiEdit"]);
 const db = new ScouterDb("/tmp/scouter-test.sqlite");
-let numTotal=0, anyPriorDenied=0, deniedItself=0, registrarDenied=0;
+let numTotal = 0,
+  anyPriorDenied = 0,
+  deniedItself = 0,
+  registrarDenied = 0;
 for (const s of db.listSessions()) {
   const states = new Map();
   for (const call of db.toolCallsOf(s.session_id)) {
     const key = call.agent_id ?? "main";
     let st = states.get(key);
-    if (!st) { st = { block: new Map() }; states.set(key, st); }
+    if (!st) {
+      st = { block: new Map() };
+      states.set(key, st);
+    }
     const denied = call.denial_kind !== null;
-    if (EDIT_TOOLS.has(call.name)) { st.block = new Map(); continue; }
+    if (EDIT_TOOLS.has(call.name)) {
+      st.block = new Map();
+      continue;
+    }
     if (call.name !== "Bash") continue;
     const k = classifyBash(call.command);
     if (k.fileWriteRule !== null) st.block = new Map();
@@ -26,4 +35,4 @@ for (const s of db.listSessions()) {
     }
   }
 }
-console.log({numTotal, deniedItself, registrarDenied, anyPriorDenied});
+console.log({ numTotal, deniedItself, registrarDenied, anyPriorDenied });
