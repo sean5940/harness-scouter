@@ -252,8 +252,13 @@ function splitHalfScores(
   return { first, second };
 }
 
-/** 시드 고정 난수. 분할이 실행마다 갈리면 판정이 재현되지 않는다. */
-function seededRandom(seed: number): () => number {
+/**
+ * 시드 고정 난수. 분할이 실행마다 갈리면 판정이 재현되지 않는다.
+ *
+ * 층화 실험의 위약 층도 이 난수기를 써야 한다. 난수기를 따로 두면 위약이 실행마다
+ * 달라져, 실제 층화와 나란히 읽을 수 없다.
+ */
+export function seededRandom(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
     state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
@@ -327,7 +332,7 @@ export type Strata = ReadonlyMap<string, string>;
  * 떨어뜨리면 안 된다. 그러면 그 세션의 분모가 통째로 빠져, 층화 전과 층화 후가 서로 다른
  * 모집단을 재게 된다. 층 이름과 겹쳐도 그 층에 합쳐질 뿐이라 해가 없다.
  */
-const UNKNOWN_STRATUM = "(unknown)";
+export const UNKNOWN_STRATUM = "(unknown)";
 
 /**
  * 한 구간의 세션을 두 묶음으로 가른다.

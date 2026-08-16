@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { permutedSplitHalf, type Strata } from "./gate.js";
 import { emptyAxes, emptyExtras, type SessionMetrics } from "./metrics.js";
 import { emptyEvents, emptyUsage, type Period } from "./periods.js";
+import { placeboStrata } from "./stratify.js";
 
 /**
  * 층화가 아는 답을 되찾는가.
@@ -203,5 +204,75 @@ describe("층화 split-half", () => {
     // 1개짜리 층은 늘 한쪽에 붙어 두 반쪽에 고정 편차를 남긴다. 상관은 편차에
     // 불변이라 그것만으로는 안 무너진다.
     expect(d?.median).toBeGreaterThan(0.5);
+  });
+});
+
+/**
+ * 위약 층이 대조 구실을 하는가.
+ *
+ * 층화는 두 반쪽의 작업 구성만 맞추는 것이 아니라 분할 자체를 제약한다. 그 제약만으로
+ * 상관이 오른다면 라벨이 아무 뜻이 없어도 오르고, 그러면 "올라감"은 작업 구성의
+ * 증거가 아니다. 위약은 층 크기 구성을 그대로 두고 라벨의 뜻만 지운다. 구성이 원인인
+ * 세계에서 실제 층화는 오르고 위약은 안 올라야 대조가 성립한다.
+ */
+describe("위약 층", () => {
+  it("구간별 층 크기 구성을 그대로 둔다", () => {
+    // 크기가 달라지면 분할 제약까지 같이 바뀌어, 위약이 실제 층화와 다른 것을 잰다.
+    const w = buildWorld(SKILLS, { a: -0.2, b: 0.2 }, 100, 21);
+    const fake = placeboStrata(w.periods, w.strata, 9973);
+    for (const period of w.periods) {
+      const count = (s: Strata): string =>
+        period.sessionIds
+          .map((sid) => s.get(sid) ?? "?")
+          .sort()
+          .join(",");
+      expect(count(fake)).toBe(count(w.strata));
+    }
+  });
+
+  it("라벨은 실제로 흩어진다", () => {
+    // 크기만 맞고 배정이 그대로면 위약이 실제 층화와 같은 것이 되어 대조가 무의미하다.
+    const w = buildWorld(SKILLS, { a: -0.2, b: 0.2 }, 100, 22);
+    const fake = placeboStrata(w.periods, w.strata, 9973);
+    const moved = [...w.strata.keys()].filter(
+      (sid) => fake.get(sid) !== w.strata.get(sid),
+    );
+    expect(moved.length).toBeGreaterThan(0);
+  });
+
+  it("시드가 같으면 같다", () => {
+    const w = buildWorld(SKILLS, { a: -0.2, b: 0.2 }, 100, 23);
+    const first = placeboStrata(w.periods, w.strata, 9973);
+    const second = placeboStrata(w.periods, w.strata, 9973);
+    for (const sid of first.keys()) {
+      expect(second.get(sid)).toBe(first.get(sid));
+    }
+  });
+
+  it("구성이 원인인 세계에서 실제 층화만 오르고 위약은 안 오른다", () => {
+    // 이 검사가 위약을 붙인 이유 전부다. 위약도 같이 오르면 그 이동은 라벨이 아니라
+    // 분할 기하학이 만든 것이고, 층화 결과를 작업 구성의 증거로 읽을 수 없다.
+    const w = buildWorld(SKILLS, { a: -0.35, b: 0.35 }, 200, 24);
+    const plain = permutedSplitHalf(w.periods, w.bySession, "readScope", 1);
+    const real = permutedSplitHalf(
+      w.periods,
+      w.bySession,
+      "readScope",
+      1,
+      w.strata,
+    );
+    const fake = permutedSplitHalf(
+      w.periods,
+      w.bySession,
+      "readScope",
+      1,
+      placeboStrata(w.periods, w.strata, 9973),
+    );
+    expect(plain?.median).toBeLessThan(0.3);
+    expect(real?.median).toBeGreaterThan(0.7);
+    // 위약은 층화 전과 같은 자리에 머문다.
+    expect(Math.abs((fake?.median ?? 0) - (plain?.median ?? 0))).toBeLessThan(
+      0.15,
+    );
   });
 });

@@ -476,10 +476,15 @@ One contrast tells them apart. **Run the same permuted split-half inside the str
 
 Sessions fall into five strata: explore · docs · build · modify · verify. These are not human labels — they are counted from the fact tables that already exist: what was edited (code or not), whether the file was created or changed, and whether the session only verified without editing.
 
-| Result | Meaning                                                                  | Next                                            |
-| ------ | ------------------------------------------------------------------------ | ----------------------------------------------- |
-| Rises  | What moved the period scores is the work mix that differs between halves | There is a reason to invest in a fixed task set |
-| Stays  | The work mix is not the cause                                            | A task set will not revive this axis            |
+| Result                   | Meaning                                                                  | Next                                            |
+| ------------------------ | ------------------------------------------------------------------------ | ----------------------------------------------- |
+| Rises above the placebo  | What moved the period scores is the work mix that differs between halves | There is a reason to invest in a fixed task set |
+| Stays                    | The work mix is not the cause                                            | A task set will not revive this axis            |
+| Rises, placebo rises too | The shift came from the split geometry, not from the labels              | Do not read it                                  |
+
+Stratification does not only match the work mix of the two halves — it also constrains the split itself. If that constraint alone lifts the correlation, it lifts just as much when the stratum labels mean nothing. So a **placebo stratification** runs alongside: it keeps the stratum sizes and shuffles only which session sits in which stratum, so the split is constrained the same way while the labels lose their meaning. **Only axes that rise above the placebo are evidence about the work mix.**
+
+One thing the placebo cannot rule out: if work type is a proxy for denominator size, stratifying balanced the denominator, and the shift may be the denominator's rather than the work type's. A probe pins both either way, but what you pin differs.
 
 The two stratum boundaries (create share, verify floor) are arbitrary values. They were not found at a bend in the observations; something had to be cut somewhere. So the variants are run together to see whether the sign of the shift holds. **If the sign flips across variants, the number came from the threshold rather than from stratification and must not be read.**
 
