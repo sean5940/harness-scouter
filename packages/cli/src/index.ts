@@ -959,7 +959,9 @@ async function main(): Promise<void> {
       }
       process.stdout.write("\n");
     }
-    const dependent = gate.correlations.filter((c) => c.independence === "fail");
+    const dependent = gate.correlations.filter(
+      (c) => c.independence === "fail",
+    );
     // 계산 불가를 독립 쪽에 접으면 "모든 쌍이 독립"이라는 문장이 재보지도 못한 쌍까지
     // 덮는다. 따로 세서 따로 적는다.
     const uncomputable = gate.correlations.filter(
@@ -1091,22 +1093,27 @@ async function main(): Promise<void> {
         padStartW(say(lang, "층화 전", "Plain"), 10) +
         padStartW(say(lang, "층화 후", "Stratified"), 12) +
         padStartW(say(lang, "이동", "Shift"), 9) +
+        padStartW(say(lang, "위약 이동", "Placebo"), 11) +
         padStartW(say(lang, "판정", "Verdict"), 10) +
         "\n",
     );
     const num = (v: number | null | undefined): string =>
       v === null || v === undefined ? "—" : v.toFixed(3);
+    const signed = (v: number | null | undefined): string =>
+      v === null || v === undefined
+        ? "—"
+        : `${v >= 0 ? "+" : ""}${v.toFixed(3)}`;
+    const placeboByAxis = new Map(
+      experiment.placebo.map((p) => [p.axis, p.delta]),
+    );
     for (const row of base.axes) {
-      const shift =
-        row.delta === null
-          ? "—"
-          : `${row.delta >= 0 ? "+" : ""}${row.delta.toFixed(3)}`;
       process.stdout.write(
         "  " +
           padEndW(t(AXIS_LABELS[row.axis], lang), cols.axisLabel) +
           padStartW(num(row.plain?.median), 10) +
           padStartW(num(row.stratified?.median), 12) +
-          padStartW(shift, 9) +
+          padStartW(signed(row.delta), 9) +
+          padStartW(signed(placeboByAxis.get(row.axis)), 11) +
           padStartW(
             `${verdictMark(row.verdictBefore)} → ${verdictMark(row.verdictAfter)}`,
             10,
@@ -1153,23 +1160,49 @@ async function main(): Promise<void> {
     const raised = sensitivity.filter(
       (s) => s.signStable && (s.min ?? 0) > 0,
     ).length;
+    // 위약을 못 넘은 축은 셈에서 뺀다. 층화는 작업 구성을 맞추는 동시에 분할 자체를
+    // 제약하는데, 제약만으로 오른 것이라면 라벨이 아무 뜻이 없어도 같은 이동이 나온다.
+    const beyondPlacebo = sensitivity.filter((s) => {
+      if (!s.signStable || (s.min ?? 0) <= 0) return false;
+      const real = base.axes.find((a) => a.axis === s.axis)?.delta;
+      const fake = placeboByAxis.get(s.axis);
+      if (real === null || real === undefined) return false;
+      if (fake === null || fake === undefined) return false;
+      return real > fake;
+    }).length;
     process.stdout.write(
       say(
         lang,
-        `\n  부호가 일정하게 올라간 축 ${raised}/${sensitivity.length}\n\n` +
-          "  올라갔다면 구간 점수를 흔든 것은 축이 아니라 반쪽마다 달라지는 작업 구성입니다.\n" +
-          "  고정 태스크 셋(프로브)으로 작업 구성을 상수로 만들면 같은 축이 살아납니다.\n" +
+        `\n  부호가 일정하게 올라간 축 ${raised}/${sensitivity.length} · 그중 위약보다 더 오른 축 ${beyondPlacebo}\n\n` +
+          "  위약은 층 크기는 그대로 두고 누가 어느 층이냐만 흩은 대조입니다. 층화가 분할을\n" +
+          "  제약하는 것만으로 상관이 오른다면 위약도 같이 오릅니다. 그래서 위약보다 더 오른\n" +
+          "  축만 작업 구성의 증거입니다.\n\n" +
+          "  올라갔고 위약을 넘었다면 구간 점수를 흔든 것은 축이 아니라 반쪽마다 달라지는\n" +
+          "  작업 구성입니다. 고정 태스크 셋(프로브)으로 작업 구성을 상수로 만들면 같은 축이\n" +
+          "  살아납니다.\n" +
           "  안 올라갔다면 원인은 작업 구성이 아니므로, 프로브를 만들어도 이 축은 안 살아납니다.\n" +
-          "  부호가 변형마다 갈리면 읽지 마세요. 층화가 아니라 임계가 만든 값입니다.\n\n" +
+          "  올랐는데 위약도 같이 올랐다면 그 이동은 라벨이 아니라 분할 기하학이 만든 것이라\n" +
+          "  읽지 마세요.\n" +
+          "  부호가 변형마다 갈려도 읽지 마세요. 층화가 아니라 임계가 만든 값입니다.\n\n" +
+          "  위약이 지우지 못하는 것이 하나 남습니다. 작업 유형이 분모 크기의 대리 변수라면\n" +
+          "  층화는 분모를 맞춘 것이고, 이동은 작업 유형이 아니라 분모가 만든 것일 수 있습니다.\n" +
+          "  프로브는 어느 쪽이든 둘 다 상수로 만들지만, 무엇을 고정해야 하는지는 달라집니다.\n\n" +
           "  이 실험은 게이트 판정을 바꾸지 않습니다. 분류기가 아직 검증되지 않은\n" +
           "  임의 임계 위에 서 있어서, 이것으로 통과선을 옮기면 통과할 이유를 찾아\n" +
           "  기준을 고친 것이 됩니다.\n",
-        `\n  Axes that rose with a stable sign: ${raised}/${sensitivity.length}\n\n` +
-          "  If they rose, what moved the period scores was not the axis but the work mix that\n" +
-          "  differs between halves. Pinning the work mix with a fixed task set (a probe) revives\n" +
-          "  those axes. If they did not rise, the work mix is not the cause and a probe will not\n" +
-          "  revive them. If the sign flips across variants, do not read the number — it came from\n" +
-          "  the threshold, not from stratification.\n\n" +
+        `\n  Axes that rose with a stable sign: ${raised}/${sensitivity.length} · of those, above placebo: ${beyondPlacebo}\n\n` +
+          "  The placebo keeps the stratum sizes and shuffles only which session sits in which\n" +
+          "  stratum. If stratification lifts the correlation merely by constraining the split, the\n" +
+          "  placebo lifts it too. Only axes that rose above the placebo are evidence about work mix.\n\n" +
+          "  If an axis rose and cleared the placebo, what moved the period scores was not the axis\n" +
+          "  but the work mix that differs between halves. Pinning the work mix with a fixed task set\n" +
+          "  (a probe) revives those axes. If it did not rise, the work mix is not the cause and a\n" +
+          "  probe will not revive it. If it rose but the placebo rose with it, the shift came from\n" +
+          "  the split geometry rather than the labels — do not read it. If the sign flips across\n" +
+          "  variants, do not read it either; that came from the threshold.\n\n" +
+          "  One thing the placebo cannot rule out: if work type is a proxy for denominator size,\n" +
+          "  stratifying balanced the denominator, and the shift may be the denominator's rather\n" +
+          "  than the work type's. A probe pins both either way, but what you pin differs.\n\n" +
           "  This experiment does not change the gate verdict. The classifier still rests on\n" +
           "  arbitrary, unvalidated thresholds, and moving the pass line with it would be\n" +
           "  editing the standard to find a reason to pass.\n",

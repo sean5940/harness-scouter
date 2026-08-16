@@ -2,13 +2,19 @@ import { AXIS_ORDER, type AxisKey } from "./definitions.js";
 import {
   MIN_SESSIONS_FOR_SPLIT_HALF,
   permutedSplitHalf,
+  seededRandom,
   SPLIT_HALF_PASS,
+  UNKNOWN_STRATUM,
   type GateVerdict,
   type SplitHalfDistribution,
   type Strata,
 } from "./gate.js";
 import type { SessionMetrics } from "./metrics.js";
-import { segmentIntoPeriods, type SessionForPeriod } from "./periods.js";
+import {
+  segmentIntoPeriods,
+  type Period,
+  type SessionForPeriod,
+} from "./periods.js";
 import {
   classifyWorkType,
   stratumSizes,
@@ -54,17 +60,116 @@ export interface StratificationVariant {
   axes: AxisStratificationEffect[];
 }
 
+/**
+ * 위약 층에서의 결과.
+ *
+ * 실제 층화의 이동과 나란히 읽는 값이다. 이 값 하나만 보면 아무 뜻이 없다.
+ */
+export interface AxisPlaceboEffect {
+  axis: AxisKey;
+  placebo: SplitHalfDistribution | null;
+  /** 위약 - 층화 전. 실제 층화의 delta 와 견준다. */
+  delta: number | null;
+}
+
 export interface StratificationExperiment {
   /** split-half 가 쓸 수 있었던 구간 수. 3 미만이면 아무 축도 못 낸다. */
   usablePeriods: number;
   sessionCount: number;
   /** 첫 항목이 기본 임계다. 나머지는 민감도 확인용이다. */
   variants: StratificationVariant[];
+  /**
+   * 위약 대조. 기본 임계의 층 크기는 그대로 두고 **누가 어느 층이냐만** 흩는다.
+   *
+   * 층화는 두 반쪽의 작업 구성만 맞추는 것이 아니라 분할 자체를 제약한다. 제약이
+   * 상관을 올리는 것이라면 층 이름표가 아무 뜻이 없어도 같이 오른다. 그러면 "올라감"을
+   * 작업 구성의 증거로 읽을 수 없다.
+   *
+   * 위약은 층 크기 구성을 그대로 두므로 분할의 제약은 같고, 라벨만 뜻을 잃는다.
+   * 실제 층화만 오르고 위약은 안 오르면 그 이동은 라벨이 실어나른 것이다. 둘이
+   * 같이 오르면 이동은 분할 기하학이 만든 것이라 읽으면 안 된다.
+   */
+  placebo: AxisPlaceboEffect[];
 }
 
 function verdictOf(d: SplitHalfDistribution | null): GateVerdict {
   if (d === null) return "not-computable";
   return d.median >= SPLIT_HALF_PASS ? "pass" : "fail";
+}
+
+function strataOf(
+  workload: ReadonlyMap<string, WorkloadCounts>,
+  thresholds: WorkTypeThresholds,
+): Strata {
+  return new Map(
+    [...workload].map(([sessionId, counts]) => [
+      sessionId,
+      classifyWorkType(counts, thresholds),
+    ]),
+  );
+}
+
+/**
+ * 위약 층 시드. 임의값이지만 고정한다. 흔들면 위약이 실행마다 달라진다.
+ *
+ * 축 시드(1..6)와 겹치지 않게 멀리 잡는다. 겹쳐도 라벨 섞기와 분할 섞기는 서로 다른
+ * 난수기라 문제는 없지만, 두 시드가 같은 수로 보이면 읽는 사람이 연결을 의심한다.
+ */
+const PLACEBO_SEED = 9973;
+
+/**
+ * 위약 뽑기 횟수.
+ *
+ * 라벨 배정 한 번은 표본 하나다. 운 좋은 배정 하나로 "위약은 안 올랐다"를 적으면
+ * 대조가 대조 구실을 못 한다. 셋을 뽑아 가운데 것을 쓴다. 순열 400 회는 배정을
+ * 고정한 채 도는 것이라 이 흔들림을 대신 잡아주지 않는다.
+ */
+const PLACEBO_DRAWS = 3;
+
+/**
+ * 층 크기는 그대로 두고 누가 어느 층이냐만 흩는다.
+ *
+ * 구간 안에서 라벨 벡터를 섞는다. 구간마다 층 크기 구성이 그대로 남으므로 `bisect` 가
+ * 받는 분할 제약이 실제 층화와 같고, 달라지는 것은 라벨이 뜻을 잃었다는 것뿐이다.
+ * 전역으로 섞으면 구간별 층 크기가 달라져 제약까지 같이 바뀌어, 무엇을 대조하는지
+ * 흐려진다.
+ */
+export function placeboStrata(
+  periods: Period[],
+  real: Strata,
+  seed: number,
+): Strata {
+  const rand = seededRandom(seed);
+  const out = new Map<string, string>();
+  for (const period of periods) {
+    const labels = period.sessionIds.map(
+      (sid) => real.get(sid) ?? UNKNOWN_STRATUM,
+    );
+    for (let i = labels.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(rand() * (i + 1));
+      const tmp = labels[i] as string;
+      labels[i] = labels[j] as string;
+      labels[j] = tmp;
+    }
+    period.sessionIds.forEach((sid, i) => out.set(sid, labels[i] as string));
+  }
+  return out;
+}
+
+/**
+ * 뽑기 여럿 중 가운데 것을 고른다.
+ *
+ * 평균을 내지 않는 이유는 `SplitHalfDistribution` 이 중앙값과 검출하한을 함께 들고
+ * 있어서다. 두 값을 따로 평균하면 어느 뽑기에도 없던 조합이 나온다. 실제로 나온
+ * 분포 하나를 고르면 표에 적히는 두 수가 같은 세계에서 온 것이 된다.
+ */
+function medianDraw(
+  draws: Array<SplitHalfDistribution | null>,
+): SplitHalfDistribution | null {
+  const real = draws.filter((d): d is SplitHalfDistribution => d !== null);
+  if (real.length === 0) return null;
+  const sorted = [...real].sort((a, b) => a.median - b.median);
+  return sorted[Math.floor((sorted.length - 1) / 2)] ?? null;
 }
 
 /**
@@ -99,12 +204,7 @@ export function runStratificationExperiment(
   ).length;
 
   const built = variants.map((thresholds) => {
-    const strata: Strata = new Map(
-      [...workload].map(([sessionId, counts]) => [
-        sessionId,
-        classifyWorkType(counts, thresholds),
-      ]),
-    );
+    const strata = strataOf(workload, thresholds);
     const types = sessions
       .map((s) => strata.get(s.sessionId))
       .filter((t): t is WorkType => t !== undefined);
@@ -140,10 +240,47 @@ export function runStratificationExperiment(
     };
   });
 
+  // 위약은 기본 임계에서만 돌린다. 변형마다 돌리면 순열 횟수가 두 배가 되는데,
+  // 위약이 답하는 질문("층 이름표가 뜻을 잃어도 오르는가")은 임계에 걸려 있지 않다.
+  // 임계 의존성은 sensitivityOf 가 따로 본다.
+  const baseThresholds = variants[0];
+  const placebo =
+    baseThresholds === undefined
+      ? []
+      : (() => {
+          const real = strataOf(workload, baseThresholds);
+          const drawn = Array.from({ length: PLACEBO_DRAWS }, (_, i) =>
+            placeboStrata(periods, real, PLACEBO_SEED + i),
+          );
+          return AXIS_ORDER.map((axis) => {
+            const plain = plainByAxis.get(axis) ?? null;
+            const chosen = medianDraw(
+              drawn.map((strata) =>
+                permutedSplitHalf(
+                  periods,
+                  bySession,
+                  axis,
+                  AXIS_ORDER.indexOf(axis) + 1,
+                  strata,
+                ),
+              ),
+            );
+            return {
+              axis,
+              placebo: chosen,
+              delta:
+                plain === null || chosen === null
+                  ? null
+                  : chosen.median - plain.median,
+            };
+          });
+        })();
+
   return {
     usablePeriods,
     sessionCount: sessions.length,
     variants: built,
+    placebo,
   };
 }
 

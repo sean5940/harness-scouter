@@ -118,6 +118,25 @@ describe("층화 실험", () => {
     }
   });
 
+  it("위약 대조를 축마다 함께 낸다", () => {
+    // 위약이 빠지면 "올라감"을 작업 구성의 증거로 읽을 수 없다. 표에 늘 같이 실린다.
+    const w = world(120);
+    const e = runStratificationExperiment(w.sessions, w.forPeriods, w.workload);
+    expect(e.placebo.map((p) => p.axis)).toEqual(AXIS_ORDER);
+    const measured = e.placebo.find((p) => p.axis === "readRevisit");
+    expect(measured?.placebo).not.toBeNull();
+    expect(measured?.delta).not.toBeNull();
+  });
+
+  it("층화 전을 못 내면 위약도 이동을 안 적는다", () => {
+    // 대조군이 없는데 위약 이동만 적으면 어디서 얼마나 움직였는지 모르는 수가 남는다.
+    const w = world(8);
+    const e = runStratificationExperiment(w.sessions, w.forPeriods, w.workload);
+    for (const row of e.placebo) {
+      expect(row.delta).toBeNull();
+    }
+  });
+
   it("민감도는 축마다 이동 범위와 부호 안정성을 낸다", () => {
     const w = world(120);
     const e = runStratificationExperiment(w.sessions, w.forPeriods, w.workload);
