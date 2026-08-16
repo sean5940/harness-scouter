@@ -12,10 +12,7 @@
  * 일이고, 전자를 조용히 넘기면 출력이 잘린 것을 아무도 모른다.
  */
 export interface ErrorSource {
-  on(
-    event: "error",
-    listener: (error: NodeJS.ErrnoException) => void,
-  ): unknown;
+  on(event: "error", listener: (error: NodeJS.ErrnoException) => void): unknown;
 }
 
 export function guardBrokenPipe(

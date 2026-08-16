@@ -42,6 +42,8 @@ describe("guardBrokenPipe", () => {
     const stream = new EventEmitter();
     guardBrokenPipe(stream, () => {});
 
-    expect(() => stream.emit("error", new Error("무엇인가"))).toThrow("무엇인가");
+    expect(() => stream.emit("error", new Error("무엇인가"))).toThrow(
+      "무엇인가",
+    );
   });
 });

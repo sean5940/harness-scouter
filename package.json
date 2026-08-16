@@ -14,10 +14,13 @@
     "test:watch": "vitest",
     "typecheck": "tsc --build --dry 2>/dev/null || tsc --build",
     "scouter": "node --no-warnings packages/cli/dist/index.js",
-    "check:docs": "node scripts/checkDocs.mjs"
+    "check:docs": "node scripts/checkDocs.mjs",
+    "format": "prettier --write .",
+    "check:format": "prettier --check ."
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "prettier": "^3.9.6",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

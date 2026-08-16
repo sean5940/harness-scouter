@@ -146,8 +146,7 @@ for (const lang of ["en", "ja"]) {
 //
 //    번역 에이전트가 새 절을 엉뚱한 자리에 넣어도 수치 검사는 통과한다. 숫자는 다 있고
 //    자리만 틀렸기 때문이다. 실제로 그렇게 한 번 어긋났다.
-const headingCount = (text) =>
-  (text.match(/^#{2,3} /gm) ?? []).length;
+const headingCount = (text) => (text.match(/^#{2,3} /gm) ?? []).length;
 const srcHeadings = headingCount(readme);
 for (const lang of ["en", "ja"]) {
   const path = join(ROOT, `README.${lang}.md`);

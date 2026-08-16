@@ -23,7 +23,14 @@ for (const s of sessions) {
   addCounts(noDenied, computeSessionMetrics(s.session_id, filtered).axes);
 }
 
-console.log("sessions", sessions.length, "calls", totalCalls, "dropped", droppedCalls);
+console.log(
+  "sessions",
+  sessions.length,
+  "calls",
+  totalCalls,
+  "dropped",
+  droppedCalls,
+);
 for (const k of Object.keys(base)) {
   const b = base[k],
     n = noDenied[k];
