@@ -9,3 +9,16 @@ dist/
 
 # SEA 빌드 산출물
 build/
+
+# ai-config 가 생성하는 호스트 설정 (ai-config init-project 로 재생성, 원본은 ai-config)
+# .codex/skills/ 는 프로젝트 원본이므로 추적 유지
+.claude/
+.codex/config.toml
+.codex/hooks.json
+.gemini/
+
+# 코드 그래프·검색 캐시는 도구가 만드는 산출물이라 커밋하지 않는다.
+# .planning/epics/ 같은 기획 문서는 추적 대상으로 남긴다.
+.planning/graphify-out/
+.planning/retrieval/
+.planning/.qmd-index-state.json
