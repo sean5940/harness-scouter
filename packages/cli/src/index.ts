@@ -1074,6 +1074,15 @@ async function main(): Promise<void> {
         WORK_TYPES.map(
           (k) => `${t(WORK_TYPE_LABELS[k], lang)} ${base.sizes[k]}`,
         ).join("  ·  ") +
+        // 유형을 못 매긴 세션도 자기들끼리 한 층이 된다. 안 적으면 층 수의 합이
+        // 세션 수와 안 맞는 이유를 읽는 사람이 알 길이 없다.
+        (experiment.unknownSessions > 0
+          ? say(
+              lang,
+              `  ·  유형 모름 ${experiment.unknownSessions}`,
+              `  ·  unknown ${experiment.unknownSessions}`,
+            )
+          : "") +
         "\n\n",
     );
 
@@ -1093,7 +1102,7 @@ async function main(): Promise<void> {
         padStartW(say(lang, "층화 전", "Plain"), 10) +
         padStartW(say(lang, "층화 후", "Stratified"), 12) +
         padStartW(say(lang, "이동", "Shift"), 9) +
-        padStartW(say(lang, "위약 이동", "Placebo"), 11) +
+        padStartW(say(lang, "위약 최대", "Placebo max"), 13) +
         padStartW(say(lang, "판정", "Verdict"), 10) +
         "\n",
     );
@@ -1103,8 +1112,10 @@ async function main(): Promise<void> {
       v === null || v === undefined
         ? "—"
         : `${v >= 0 ? "+" : ""}${v.toFixed(3)}`;
+    // 가운데 뽑기가 아니라 가장 많이 오른 뽑기를 적는다. 표에서 "이동 > 위약 최대"가
+    // 그대로 읽히고, 넘었다는 판단이 운 좋은 뽑기 하나에 걸리지 않는다.
     const placeboByAxis = new Map(
-      experiment.placebo.map((p) => [p.axis, p.delta]),
+      experiment.placebo.map((p) => [p.axis, p.deltaRange?.max ?? null]),
     );
     for (const row of base.axes) {
       process.stdout.write(
@@ -1113,7 +1124,7 @@ async function main(): Promise<void> {
           padStartW(num(row.plain?.median), 10) +
           padStartW(num(row.stratified?.median), 12) +
           padStartW(signed(row.delta), 9) +
-          padStartW(signed(placeboByAxis.get(row.axis)), 11) +
+          padStartW(signed(placeboByAxis.get(row.axis)), 13) +
           padStartW(
             `${verdictMark(row.verdictBefore)} → ${verdictMark(row.verdictAfter)}`,
             10,
@@ -1162,6 +1173,8 @@ async function main(): Promise<void> {
     ).length;
     // 위약을 못 넘은 축은 셈에서 뺀다. 층화는 작업 구성을 맞추는 동시에 분할 자체를
     // 제약하는데, 제약만으로 오른 것이라면 라벨이 아무 뜻이 없어도 같은 이동이 나온다.
+    // 견주는 상대는 가장 많이 오른 위약 뽑기다. 가운데와 견주면 뽑기 하나가 낮게
+    // 나온 덕에 "넘었다"가 되는 축이 생긴다.
     const beyondPlacebo = sensitivity.filter((s) => {
       if (!s.signStable || (s.min ?? 0) <= 0) return false;
       const real = base.axes.find((a) => a.axis === s.axis)?.delta;
@@ -1173,15 +1186,16 @@ async function main(): Promise<void> {
     process.stdout.write(
       say(
         lang,
-        `\n  부호가 일정하게 올라간 축 ${raised}/${sensitivity.length} · 그중 위약보다 더 오른 축 ${beyondPlacebo}\n\n` +
-          "  위약은 층 크기는 그대로 두고 누가 어느 층이냐만 흩은 대조입니다. 층화가 분할을\n" +
-          "  제약하는 것만으로 상관이 오른다면 위약도 같이 오릅니다. 그래서 위약보다 더 오른\n" +
-          "  축만 작업 구성의 증거입니다.\n\n" +
-          "  올라갔고 위약을 넘었다면 구간 점수를 흔든 것은 축이 아니라 반쪽마다 달라지는\n" +
+        `\n  부호가 일정하게 올라간 축 ${raised}/${sensitivity.length} · 그중 잡음 바닥을 넘은 축 ${beyondPlacebo}\n\n` +
+          "  위약은 층 크기는 그대로 두고 누가 어느 층이냐만 흩은 대조입니다. 뜻 없는 라벨로\n" +
+          "  잰 이동이라, 이 값이 곧 이동의 잡음 바닥입니다. 얼마나 움직여야 움직인 것인지는\n" +
+          "  이동 하나만 봐서는 알 수 없고 이 값이 있어야 정해집니다. 표의 위약 값은 뽑기\n" +
+          "  세 번 중 가장 많이 오른 것이라, 이동이 그 값을 넘어야 넘은 것으로 셉니다.\n\n" +
+          "  올라갔고 바닥을 넘었다면 구간 점수를 흔든 것은 축이 아니라 반쪽마다 달라지는\n" +
           "  작업 구성입니다. 고정 태스크 셋(프로브)으로 작업 구성을 상수로 만들면 같은 축이\n" +
           "  살아납니다.\n" +
           "  안 올라갔다면 원인은 작업 구성이 아니므로, 프로브를 만들어도 이 축은 안 살아납니다.\n" +
-          "  올랐는데 위약도 같이 올랐다면 그 이동은 라벨이 아니라 분할 기하학이 만든 것이라\n" +
+          "  올랐는데 바닥을 못 넘었다면 그 크기의 이동은 라벨이 아무 뜻이 없어도 나옵니다.\n" +
           "  읽지 마세요.\n" +
           "  부호가 변형마다 갈려도 읽지 마세요. 층화가 아니라 임계가 만든 값입니다.\n\n" +
           "  위약이 지우지 못하는 것이 하나 남습니다. 작업 유형이 분모 크기의 대리 변수라면\n" +
@@ -1190,15 +1204,17 @@ async function main(): Promise<void> {
           "  이 실험은 게이트 판정을 바꾸지 않습니다. 분류기가 아직 검증되지 않은\n" +
           "  임의 임계 위에 서 있어서, 이것으로 통과선을 옮기면 통과할 이유를 찾아\n" +
           "  기준을 고친 것이 됩니다.\n",
-        `\n  Axes that rose with a stable sign: ${raised}/${sensitivity.length} · of those, above placebo: ${beyondPlacebo}\n\n` +
+        `\n  Axes that rose with a stable sign: ${raised}/${sensitivity.length} · of those, above the noise floor: ${beyondPlacebo}\n\n` +
           "  The placebo keeps the stratum sizes and shuffles only which session sits in which\n" +
-          "  stratum. If stratification lifts the correlation merely by constraining the split, the\n" +
-          "  placebo lifts it too. Only axes that rose above the placebo are evidence about work mix.\n\n" +
-          "  If an axis rose and cleared the placebo, what moved the period scores was not the axis\n" +
+          "  stratum. It is a shift measured with labels that mean nothing, which makes it the noise\n" +
+          "  floor for the shift. How far something has to move before it has moved is not readable\n" +
+          "  from the shift alone; this is the number that settles it. The placebo column is the\n" +
+          "  largest of three draws, so a shift must clear that to count.\n\n" +
+          "  If an axis rose and cleared the floor, what moved the period scores was not the axis\n" +
           "  but the work mix that differs between halves. Pinning the work mix with a fixed task set\n" +
           "  (a probe) revives those axes. If it did not rise, the work mix is not the cause and a\n" +
-          "  probe will not revive it. If it rose but the placebo rose with it, the shift came from\n" +
-          "  the split geometry rather than the labels — do not read it. If the sign flips across\n" +
+          "  probe will not revive it. If it rose but stayed under the floor, a shift that size also\n" +
+          "  appears when the labels mean nothing — do not read it. If the sign flips across\n" +
           "  variants, do not read it either; that came from the threshold.\n\n" +
           "  One thing the placebo cannot rule out: if work type is a proxy for denominator size,\n" +
           "  stratifying balanced the denominator, and the shift may be the denominator's rather\n" +

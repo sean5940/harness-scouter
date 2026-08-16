@@ -53,41 +53,69 @@ export interface AxisStratificationEffect {
 
 export interface StratificationVariant {
   thresholds: WorkTypeThresholds;
-  /** 이 임계에서 각 층에 세션이 몇 개 들어갔는가. */
+  /** 이 임계에서 각 층에 세션이 몇 개 들어갔는가. 작업 유형 다섯만 센다. */
   sizes: Record<WorkType, number>;
-  /** 세션이 하나라도 들어간 층의 수. 1이면 층화가 아무것도 안 가른 것이다. */
+  /**
+   * 세션이 하나라도 들어간 층의 수. 1이면 층화가 아무것도 안 가른 것이다.
+   *
+   * 유형을 모르는 세션들도 `bisect` 안에서 자기들끼리 한 층을 이루므로 여기 함께
+   * 센다. 작업 유형만 세면, 유형이 하나뿐이고 모르는 세션이 잔뜩인 코퍼스에서
+   * "층화가 가르는 것이 없다"고 적으면서 실제로는 아는 것과 모르는 것으로 가르게 된다.
+   */
   occupiedStrata: number;
   axes: AxisStratificationEffect[];
 }
 
 /**
- * 위약 층에서의 결과.
+ * 뜻 없는 라벨로 잰 이동. 실제 층화의 이동과 나란히 읽는다.
  *
- * 실제 층화의 이동과 나란히 읽는 값이다. 이 값 하나만 보면 아무 뜻이 없다.
+ * 이 값 하나만 보면 아무 뜻이 없다. 실제 이동이 이것을 넘느냐가 전부다.
  */
 export interface AxisPlaceboEffect {
   axis: AxisKey;
+  /** 가운데 뽑기의 분포. 실제로 나온 뽑기 하나라 두 수가 같은 세계에서 온 것이다. */
   placebo: SplitHalfDistribution | null;
-  /** 위약 - 층화 전. 실제 층화의 delta 와 견준다. */
+  /** 가운데 뽑기의 이동. */
   delta: number | null;
+  /**
+   * 뽑기 전체에서 이동의 최소·최대. 이것이 잡음 바닥의 폭이다.
+   *
+   * 실제 층화가 바닥을 넘었는지 셀 때는 가운데가 아니라 `max` 와 견준다. 가운데와
+   * 견주면 뽑기 하나가 낮게 나온 덕에 넘은 것이 되는 축이 생긴다.
+   */
+  deltaRange: { min: number; max: number } | null;
 }
 
 export interface StratificationExperiment {
   /** split-half 가 쓸 수 있었던 구간 수. 3 미만이면 아무 축도 못 낸다. */
   usablePeriods: number;
   sessionCount: number;
+  /**
+   * 작업 유형을 못 매긴 세션 수.
+   *
+   * 층표에 없는 세션은 버리지 않고 `(unknown)` 층으로 함께 간다. 버리면 층화 전과
+   * 층화 후가 서로 다른 모집단을 재게 된다. 다만 그 세션들도 하나의 층을 이루므로,
+   * 수가 크면 "작업 유형으로 갈랐다"가 아니라 "유형을 아는 세션과 모르는 세션으로
+   * 갈랐다"에 가까워진다. 화면에 적어 읽는 사람이 알게 한다.
+   */
+  unknownSessions: number;
   /** 첫 항목이 기본 임계다. 나머지는 민감도 확인용이다. */
   variants: StratificationVariant[];
   /**
-   * 위약 대조. 기본 임계의 층 크기는 그대로 두고 **누가 어느 층이냐만** 흩는다.
+   * 이동의 잡음 바닥. 기본 임계의 층 크기는 그대로 두고 **누가 어느 층이냐만** 흩는다.
    *
-   * 층화는 두 반쪽의 작업 구성만 맞추는 것이 아니라 분할 자체를 제약한다. 제약이
-   * 상관을 올리는 것이라면 층 이름표가 아무 뜻이 없어도 같이 오른다. 그러면 "올라감"을
-   * 작업 구성의 증거로 읽을 수 없다.
+   * `delta` 만 보면 "얼마나 움직여야 움직인 것인가"에 답할 수 없다. 층화는 두 반쪽의
+   * 작업 구성을 맞추는 동시에 분할 자체를 제약하는데, 그 제약과 순열 400 회의 흔들림이
+   * 라벨과 무관하게 얼마짜리 이동을 만드는지가 어디에도 안 적혀 있다.
    *
-   * 위약은 층 크기 구성을 그대로 두므로 분할의 제약은 같고, 라벨만 뜻을 잃는다.
-   * 실제 층화만 오르고 위약은 안 오르면 그 이동은 라벨이 실어나른 것이다. 둘이
-   * 같이 오르면 이동은 분할 기하학이 만든 것이라 읽으면 안 된다.
+   * 위약이 그 값이다. 층 크기 구성을 그대로 두므로 분할이 받는 제약은 실제 층화와 같고,
+   * 달라지는 것은 라벨이 뜻을 잃었다는 것뿐이다. **아무 뜻 없는 라벨로 잰 이동**이 곧
+   * 잡음 바닥이고, 실제 이동이 그 바닥을 못 넘으면 증거가 아니다.
+   *
+   * 실측에서 위약 이동은 -0.0012, 폭은 [-0.0089, +0.0085] 로 0 근처에 앉는다. 크기
+   * 제약 자체는 상관을 안 올린다는 뜻인데, 그것을 가정하지 않고 재서 보인다는 것이
+   * 이 대조의 두 번째 쓸모다. 같은 코퍼스에서 실제 이동이 +0.0119 였다 — 바닥을
+   * 겨우 넘는다. 위약이 없으면 그 값을 "올랐다"로 읽게 된다.
    */
   placebo: AxisPlaceboEffect[];
 }
@@ -118,13 +146,39 @@ function strataOf(
 const PLACEBO_SEED = 9973;
 
 /**
+ * 뽑기 사이 시드 간격.
+ *
+ * 시드를 1씩 올리면 안 된다. `seededRandom` 은 선형 합동 난수라 이웃 시드가 첫 몇
+ * 개의 출력에서 거의 같은 값을 낸다. 9973·9974·9975 로 재보면 첫 난수 세 개가
+ * 0.101128 · 0.101516 · 0.101903 으로 격차가 0.000775 다. 그러면 세 뽑기가 앞쪽
+ * 구간에서 사실상 같은 섞기를 해, 뽑기를 늘린 값이 없다.
+ *
+ * 큰 소수만큼 띄우면 같은 자리 격차가 0.588 로 벌어진다.
+ */
+const PLACEBO_SEED_STRIDE = 104729;
+
+/**
  * 위약 뽑기 횟수.
  *
  * 라벨 배정 한 번은 표본 하나다. 운 좋은 배정 하나로 "위약은 안 올랐다"를 적으면
- * 대조가 대조 구실을 못 한다. 셋을 뽑아 가운데 것을 쓴다. 순열 400 회는 배정을
- * 고정한 채 도는 것이라 이 흔들림을 대신 잡아주지 않는다.
+ * 대조가 대조 구실을 못 한다. 순열 400 회는 배정을 고정한 채 도는 것이라 이 흔들림을
+ * 대신 잡아주지 않는다.
  */
 const PLACEBO_DRAWS = 3;
+
+/**
+ * 뽑기마다 쓸 시드.
+ *
+ * 상수 둘을 그대로 두지 않고 함수로 빼는 이유는 간격이 다시 1로 좁아지는 것을 테스트가
+ * 잡게 하려는 것이다. 좁아져도 코드는 돌아가고 값도 그럴듯하게 나오므로, 눈으로는
+ * 못 잡는다.
+ */
+export function placeboSeeds(count: number = PLACEBO_DRAWS): number[] {
+  return Array.from(
+    { length: count },
+    (_, i) => PLACEBO_SEED + i * PLACEBO_SEED_STRIDE,
+  );
+}
 
 /**
  * 층 크기는 그대로 두고 누가 어느 층이냐만 흩는다.
@@ -203,6 +257,11 @@ export function runStratificationExperiment(
     (p) => p.sessionIds.length >= MIN_SESSIONS_FOR_SPLIT_HALF,
   ).length;
 
+  // 임계와 무관하다. 집계가 없는 세션은 어느 임계에서도 유형을 못 매긴다.
+  const unknownSessions = sessions.filter(
+    (s) => !workload.has(s.sessionId),
+  ).length;
+
   const built = variants.map((thresholds) => {
     const strata = strataOf(workload, thresholds);
     const types = sessions
@@ -235,7 +294,9 @@ export function runStratificationExperiment(
     return {
       thresholds,
       sizes,
-      occupiedStrata: Object.values(sizes).filter((n) => n > 0).length,
+      occupiedStrata:
+        Object.values(sizes).filter((n) => n > 0).length +
+        (unknownSessions > 0 ? 1 : 0),
       axes,
     };
   });
@@ -249,22 +310,27 @@ export function runStratificationExperiment(
       ? []
       : (() => {
           const real = strataOf(workload, baseThresholds);
-          const drawn = Array.from({ length: PLACEBO_DRAWS }, (_, i) =>
-            placeboStrata(periods, real, PLACEBO_SEED + i),
+          const drawn = placeboSeeds().map((seed) =>
+            placeboStrata(periods, real, seed),
           );
           return AXIS_ORDER.map((axis) => {
             const plain = plainByAxis.get(axis) ?? null;
-            const chosen = medianDraw(
-              drawn.map((strata) =>
-                permutedSplitHalf(
-                  periods,
-                  bySession,
-                  axis,
-                  AXIS_ORDER.indexOf(axis) + 1,
-                  strata,
-                ),
+            const runs = drawn.map((strata) =>
+              permutedSplitHalf(
+                periods,
+                bySession,
+                axis,
+                AXIS_ORDER.indexOf(axis) + 1,
+                strata,
               ),
             );
+            const chosen = medianDraw(runs);
+            const deltas =
+              plain === null
+                ? []
+                : runs
+                    .filter((d): d is SplitHalfDistribution => d !== null)
+                    .map((d) => d.median - plain.median);
             return {
               axis,
               placebo: chosen,
@@ -272,6 +338,10 @@ export function runStratificationExperiment(
                 plain === null || chosen === null
                   ? null
                   : chosen.median - plain.median,
+              deltaRange:
+                deltas.length === 0
+                  ? null
+                  : { min: Math.min(...deltas), max: Math.max(...deltas) },
             };
           });
         })();
@@ -279,6 +349,7 @@ export function runStratificationExperiment(
   return {
     usablePeriods,
     sessionCount: sessions.length,
+    unknownSessions,
     variants: built,
     placebo,
   };
