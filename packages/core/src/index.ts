@@ -17,6 +17,8 @@ export * from "./outcomes.js";
 export * from "./validity.js";
 export * from "./bash.js";
 export * from "./gate.js";
+export * from "./worktype.js";
+export * from "./stratify.js";
 export * from "./reportHtml.js";
 export * from "./stats.js";
 export * from "./growth.js";

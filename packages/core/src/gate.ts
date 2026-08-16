@@ -219,7 +219,8 @@ function stableBucket(sessionId: string): number {
   return (hash >>> 0) % 2;
 }
 
-const MIN_SESSIONS_FOR_SPLIT_HALF = 6;
+/** 반쪽이 세션 한둘이면 비율이 통째로 튄다. 층화 실험도 같은 하한을 써야 한다. */
+export const MIN_SESSIONS_FOR_SPLIT_HALF = 6;
 
 /** 구간의 세션을 두 묶음으로 갈라 같은 축을 두 번 계산한다. */
 function splitHalfScores(
@@ -293,11 +294,101 @@ export interface SplitHalfDistribution {
 
 const SPLIT_HALF_PERMUTATIONS = 400;
 
+/**
+ * split-half 통과선.
+ *
+ * 층화 실험이 같은 선으로 전후를 재야 "판정이 바뀌었다"가 성립한다. 두 자리에 숫자를
+ * 따로 적으면 한쪽만 고쳐 실험이 게이트와 다른 기준으로 통과를 셀 수 있다.
+ */
+export const SPLIT_HALF_PASS = 0.5;
+
+/** 제자리 Fisher-Yates. 분할마다 같은 코드를 두 번 적지 않으려고 뗀다. */
+function shuffle(ids: string[], rand: () => number): void {
+  for (let i = ids.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rand() * (i + 1));
+    const tmp = ids[i] as string;
+    ids[i] = ids[j] as string;
+    ids[j] = tmp;
+  }
+}
+
+/**
+ * 세션을 층으로 가르는 표. 값이 무엇을 뜻하는지는 여기서 안 본다.
+ *
+ * 작업 유형 타입을 그대로 받으면 게이트가 분류기의 taxonomy 에 묶인다. 게이트가 아는
+ * 것은 "같은 문자열이면 같은 층"뿐이어야, 나중에 다른 층화 기준(프로젝트·모델·실행 모드)을
+ * 같은 코드로 재볼 수 있다.
+ */
+export type Strata = ReadonlyMap<string, string>;
+
+/**
+ * 층을 모르는 세션이 갈 곳. 층별 분할에서 자기들끼리 한 층이 된다.
+ *
+ * 떨어뜨리면 안 된다. 그러면 그 세션의 분모가 통째로 빠져, 층화 전과 층화 후가 서로 다른
+ * 모집단을 재게 된다. 층 이름과 겹쳐도 그 층에 합쳐질 뿐이라 해가 없다.
+ */
+const UNKNOWN_STRATUM = "(unknown)";
+
+/**
+ * 한 구간의 세션을 두 묶음으로 가른다.
+ *
+ * 층이 없으면 통째로 섞어 앞뒤로 자른다. 층이 있으면 **층 안에서** 갈라 합친다.
+ * 그래야 두 반쪽의 작업 구성이 같아지고, 남는 차이가 축의 불안정으로만 남는다.
+ * 통째로 섞으면 한쪽에 리팩터링 세션이 몰리는 분할이 그대로 상관을 깎는다.
+ */
+function bisect(
+  sessionIds: readonly string[],
+  rand: () => number,
+  strata: Strata | undefined,
+): { a: string[]; b: string[] } {
+  if (strata === undefined) {
+    const ids = [...sessionIds];
+    shuffle(ids, rand);
+    const half = Math.floor(ids.length / 2);
+    return { a: ids.slice(0, half), b: ids.slice(half) };
+  }
+
+  const groups = new Map<string, string[]>();
+  for (const sid of sessionIds) {
+    const key = strata.get(sid) ?? UNKNOWN_STRATUM;
+    const group = groups.get(key);
+    if (group === undefined) groups.set(key, [sid]);
+    else group.push(sid);
+  }
+
+  const a: string[] = [];
+  const b: string[] = [];
+  // 층 순서를 정렬로 고정한다. Map 순회 순서는 세션이 들어온 순서라, 같은 구간을
+  // 같은 시드로 다시 돌려도 앞선 층이 난수를 몇 번 쓰느냐가 달라질 수 있다.
+  for (const key of [...groups.keys()].sort()) {
+    const ids = groups.get(key) as string[];
+    shuffle(ids, rand);
+    // 층별 인원수는 순열마다 고정하고, 누가 어느 쪽에 가느냐만 섞는다.
+    //
+    // 남는 하나를 매번 난수로 던지는 방식을 먼저 썼는데 그게 틀렸다. 그러면 두 반쪽의
+    // 구성이 순열마다 달라져, 층화로 걷어내려던 구성 잡음이 그대로 돌아온다. 게다가
+    // 그 하나는 늘 정확히 한쪽에만 들어가므로 두 반쪽에 반대 부호로 실린다. 세션
+    // 1개짜리 층을 넣은 검증 세계에서 상관이 -0.284 로 내려갔다.
+    //
+    // 남는 하나는 지금까지 덜 받은 쪽에 준다. 홀수 층이 여럿이면 나머지가 양쪽으로
+    // 갈려 크기가 안 쏠리고, 층이 하나뿐이면 그 층은 늘 같은 쪽에 붙는다. 후자는
+    // 두 반쪽에 고정 편차를 남기지만, 상관은 편차에 불변이라 판정을 흔들지 않는다.
+    const base = Math.floor(ids.length / 2);
+    const takesExtra = ids.length % 2 === 1 && a.length <= b.length;
+    const toA = base + (takesExtra ? 1 : 0);
+    for (let i = 0; i < ids.length; i += 1) {
+      (i < toA ? a : b).push(ids[i] as string);
+    }
+  }
+  return { a, b };
+}
+
 export function permutedSplitHalf(
   periods: Period[],
   bySession: Map<string, SessionMetrics>,
   axis: AxisKey,
   seed: number,
+  strata?: Strata,
 ): SplitHalfDistribution | null {
   const usable = periods.filter(
     (p) => p.sessionIds.length >= MIN_SESSIONS_FOR_SPLIT_HALF,
@@ -312,24 +403,20 @@ export function permutedSplitHalf(
     const first: number[] = [];
     const second: number[] = [];
     for (const period of usable) {
-      // 비복원 이분할. Fisher-Yates 로 섞어 앞 절반과 뒤 절반으로 가른다.
-      const ids = [...period.sessionIds];
-      for (let i = ids.length - 1; i > 0; i -= 1) {
-        const j = Math.floor(rand() * (i + 1));
-        const tmp = ids[i] as string;
-        ids[i] = ids[j] as string;
-        ids[j] = tmp;
-      }
-      const half = Math.floor(ids.length / 2);
+      const split = bisect(period.sessionIds, rand, strata);
       const a: AxisCounts["readScope"] = { num: 0, den: 0 };
       const b: AxisCounts["readScope"] = { num: 0, den: 0 };
-      ids.forEach((sid, i) => {
-        const metrics = bySession.get(sid);
-        if (metrics === undefined) return;
-        const target = i < half ? a : b;
-        target.num += metrics.axes[axis].num;
-        target.den += metrics.axes[axis].den;
-      });
+      for (const [half, target] of [
+        [split.a, a],
+        [split.b, b],
+      ] as const) {
+        for (const sid of half) {
+          const metrics = bySession.get(sid);
+          if (metrics === undefined) continue;
+          target.num += metrics.axes[axis].num;
+          target.den += metrics.axes[axis].den;
+        }
+      }
       const sa = axisScore(axis, a);
       const sb = axisScore(axis, b);
       if (sa !== null && sb !== null) {
@@ -862,7 +949,10 @@ export function runGate(
         name: L("split-half", "split-half"),
         // 판정은 순열 중앙값으로 한다. 분포의 상단을 보고 임계를 느슨하게 하고 싶어지는데,
         // 그러면 게이트가 아니라 통과시킬 이유를 찾는 장치가 된다.
-        verdict: permuted !== null && permuted.median >= 0.5 ? "pass" : "fail",
+        verdict:
+          permuted !== null && permuted.median >= SPLIT_HALF_PASS
+            ? "pass"
+            : "fail",
         value:
           permuted === null
             ? t(NOT_COMPUTABLE, lang)

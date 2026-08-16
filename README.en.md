@@ -279,6 +279,7 @@ A hexagonal radar, the stat bars, the grading table, the harness structure, the 
 
 ```bash
 npm run scouter -- gate         # M0.5 reproducibility gate
+npm run scouter -- strata       # re-run split-half inside work-type strata
 npm run scouter -- outcomes     # PR outcomes and signal discrimination (needs gh)
 npm run scouter -- periods      # list of periods
 npm run scouter -- json         # JSON for the extension
@@ -466,6 +467,23 @@ Growing the period 2x, 3x, and 4x did not help. The cause looks less like "too f
 Instead of reading a single split, the tool reads **the distribution of 400 random two-way splits**. With 14 sessions in a period there are 1,716 possible splits, and picking one of them to decide by lets luck settle the verdict.
 
 That is what happened. Index-first search passed at 0.505 on a single split, but **the permutation median is 0.264**. It was one lucky split, and that is why support for the per-period screen dropped from 2/6 to 1/6.
+
+### The experiment that separates the causes — stratify by work type
+
+"Sessions do too many different things" is still a guess, because there are two candidates. Either the axis is unstable to begin with, or the two halves get a different work mix when the period is split.
+
+One contrast tells them apart. **Run the same permuted split-half inside the strata only** and the two halves get the same work mix, so if the correlation rises the cause was the mix, and if it stays the cause is the axis itself. `scouter strata` runs that contrast.
+
+Sessions fall into five strata: explore · docs · build · modify · verify. These are not human labels — they are counted from the fact tables that already exist: what was edited (code or not), whether the file was created or changed, and whether the session only verified without editing.
+
+| Result | Meaning                                                                  | Next                                            |
+| ------ | ------------------------------------------------------------------------ | ----------------------------------------------- |
+| Rises  | What moved the period scores is the work mix that differs between halves | There is a reason to invest in a fixed task set |
+| Stays  | The work mix is not the cause                                            | A task set will not revive this axis            |
+
+The two stratum boundaries (create share, verify floor) are arbitrary values. They were not found at a bend in the observations; something had to be cut somewhere. So the variants are run together to see whether the sign of the shift holds. **If the sign flips across variants, the number came from the threshold rather than from stratification and must not be read.**
+
+**This experiment does not change the gate verdict.** The classifier still rests on arbitrary, unvalidated thresholds, and moving the pass line with it would be editing the standard to find a reason to pass.
 
 ### Shortfalls come with a prescription
 
