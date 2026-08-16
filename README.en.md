@@ -478,11 +478,13 @@ Sessions fall into five strata: explore · docs · build · modify · verify. Th
 
 | Result                   | Meaning                                                                  | Next                                            |
 | ------------------------ | ------------------------------------------------------------------------ | ----------------------------------------------- |
-| Rises above the placebo  | What moved the period scores is the work mix that differs between halves | There is a reason to invest in a fixed task set |
+| Rises above the floor    | What moved the period scores is the work mix that differs between halves | There is a reason to invest in a fixed task set |
 | Stays                    | The work mix is not the cause                                            | A task set will not revive this axis            |
-| Rises, placebo rises too | The shift came from the split geometry, not from the labels              | Do not read it                                  |
+| Rises but stays under it | A shift that size also appears when the labels mean nothing              | Do not read it                                  |
 
-Stratification does not only match the work mix of the two halves — it also constrains the split itself. If that constraint alone lifts the correlation, it lifts just as much when the stratum labels mean nothing. So a **placebo stratification** runs alongside: it keeps the stratum sizes and shuffles only which session sits in which stratum, so the split is constrained the same way while the labels lose their meaning. **Only axes that rise above the placebo are evidence about the work mix.**
+How far a shift has to move before it has moved is not readable from the shift alone. So a **placebo stratification** runs alongside: it keeps the stratum sizes and shuffles only which session sits in which stratum, so the split is constrained the same way while the labels lose their meaning. **A shift measured with meaningless labels is the noise floor, and a real shift that does not clear it is not evidence.**
+
+The floor is not as low as it looks. A real shift can land just barely above it, and without the placebo that number reads as "it rose".
 
 One thing the placebo cannot rule out: if work type is a proxy for denominator size, stratifying balanced the denominator, and the shift may be the denominator's rather than the work type's. A probe pins both either way, but what you pin differs.
 

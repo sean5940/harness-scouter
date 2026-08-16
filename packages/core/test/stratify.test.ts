@@ -7,7 +7,12 @@ import {
   emptyUsage,
   type SessionForPeriod,
 } from "../src/periods.js";
-import { runStratificationExperiment, sensitivityOf } from "../src/stratify.js";
+import { seededRandom } from "../src/gate.js";
+import {
+  placeboSeeds,
+  runStratificationExperiment,
+  sensitivityOf,
+} from "../src/stratify.js";
 import {
   emptyWorkload,
   WORK_TYPE_VARIANTS,
@@ -126,6 +131,50 @@ describe("층화 실험", () => {
     const measured = e.placebo.find((p) => p.axis === "readRevisit");
     expect(measured?.placebo).not.toBeNull();
     expect(measured?.delta).not.toBeNull();
+    // 뽑기 폭이 있어야 위약이 스스로 얼마나 흔들리는지 읽을 수 있다.
+    expect(measured?.deltaRange).not.toBeNull();
+    expect(measured?.deltaRange?.max).toBeGreaterThanOrEqual(
+      measured?.deltaRange?.min ?? 0,
+    );
+    // 가운데 뽑기는 폭 안에 있어야 한다. 밖이면 둘이 다른 것을 재고 있다.
+    expect(measured?.delta).toBeGreaterThanOrEqual(
+      measured?.deltaRange?.min ?? 0,
+    );
+    expect(measured?.delta).toBeLessThanOrEqual(measured?.deltaRange?.max ?? 0);
+  });
+
+  it("위약 뽑기 시드는 서로 멀리 떨어져 있다", () => {
+    // 시드를 1씩 올리면 안 된다. seededRandom 이 선형 합동이라 이웃 시드의 첫 출력이
+    // 거의 같아, 세 뽑기가 앞쪽 구간에서 사실상 같은 섞기를 한다. 뽑기를 셋으로 늘린
+    // 값이 통째로 사라지는데 코드는 멀쩡히 돌고 값도 그럴듯해 눈으로는 못 잡는다.
+    const seeds = placeboSeeds(3);
+    expect(new Set(seeds).size).toBe(3);
+    const firsts = seeds.map((s) => seededRandom(s)());
+    for (let i = 0; i < firsts.length; i += 1) {
+      for (let j = i + 1; j < firsts.length; j += 1) {
+        expect(
+          Math.abs((firsts[i] as number) - (firsts[j] as number)),
+        ).toBeGreaterThan(0.05);
+      }
+    }
+  });
+
+  it("유형을 못 매긴 세션을 세고 층 수에 넣는다", () => {
+    // 버리면 층화 전후가 다른 모집단을 재고, 안 세면 "층화가 가르는 것이 없다"를
+    // 적으면서 실제로는 아는 것과 모르는 것으로 가르게 된다.
+    const w = world(60);
+    const partial = new Map(w.workload);
+    for (const sid of Array.from(partial.keys()).slice(0, 20))
+      partial.delete(sid);
+    const e = runStratificationExperiment(w.sessions, w.forPeriods, partial);
+    expect(e.unknownSessions).toBe(20);
+    const sized = Object.values(e.variants[0]?.sizes ?? {}).reduce(
+      (s, n) => s + n,
+      0,
+    );
+    expect(sized + e.unknownSessions).toBe(e.sessionCount);
+    // 작업 유형 둘 + 모르는 층 하나.
+    expect(e.variants[0]?.occupiedStrata).toBe(3);
   });
 
   it("층화 전을 못 내면 위약도 이동을 안 적는다", () => {
