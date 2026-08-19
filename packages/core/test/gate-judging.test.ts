@@ -250,29 +250,39 @@ describe("계산 불가 판정", () => {
   });
 });
 
+/**
+ * 짝짓기가 맞는지는 rho 로 본다. 판정은 rho 만으로 나오지 않는다.
+ *
+ * 이 픽스처들은 구간이 4~5개인데, 그 크기에서는 교란이 없어도 |rho| >= 0.5 가 45%
+ * 확률로 나온다(순열 전수). 그래서 판정은 표본 수까지 보고 not-computable 을 낸다.
+ * 짝짓기 회귀는 값의 rho 부분이 그대로 잡는다. 판정으로 잡으면 임계가 바뀔 때마다
+ * 짝짓기와 무관하게 깨진다.
+ */
 describe("길이 교란의 짝짓기", () => {
   it("점수 없는 구간이 중간에 있어도 같은 구간의 세션 수와 짝짓는다", () => {
     // 제대로 짝지으면 0.1·0.2·0.3·0.4 와 4·5·6·7 이라 rho 는 1 이다.
-    // 앞에서 자르면 4·40·5·6 과 짝지어져 0.400 이 나오고 판정까지 통과로 뒤집힌다.
+    // 앞에서 자르면 4·40·5·6 과 짝지어져 0.400 이 나온다.
     const gate = gateOf(middleNullCorpus());
     const check = checkOf(gate, "verificationFreshness", "length-confound");
-    expect(check.value).toBe("1.000");
-    expect(check.verdict).toBe("fail");
+    expect(check.value).toMatch(/^1\.000\b/);
+    // 구간 4개는 완전 단조여도 양측 최소 p 가 0.083 이라 기각이 원리적으로 불가능하다.
+    expect(check.verdict).toBe("not-computable");
   });
 
   it("빠진 구간이 없는 축은 값도 판정도 그대로다", () => {
     // 대조군. readScope 는 다섯 구간 전부에 점수가 있어 짝짓기가 원래 맞았다.
     const gate = gateOf(middleNullCorpus());
     const check = checkOf(gate, "readScope", "length-confound");
-    expect(check.value).toBe("0.000");
-    expect(check.verdict).toBe("pass");
+    expect(check.value).toMatch(/^0\.000\b/);
+    // 상관이 0 이어도 구간 5개로는 "교란 없음" 을 주장할 수 없다.
+    expect(check.verdict).toBe("not-computable");
   });
 
   it("동점도 빠진 구간도 없으면 상관이 그대로 계산된다", () => {
     // 대조군. 세 결함 중 어느 것도 걸리지 않는 축은 예전 값을 그대로 낸다.
     const gate = gateOf(constantAxisCorpus());
     const check = checkOf(gate, "verificationFreshness", "length-confound");
-    expect(check.value).toBe("0.000");
-    expect(check.verdict).toBe("pass");
+    expect(check.value).toMatch(/^0\.000\b/);
+    expect(check.verdict).toBe("not-computable");
   });
 });

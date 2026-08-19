@@ -183,6 +183,90 @@ function spearman(xs: number[], ys: number[]): number {
   return pearson(ranks(xs), ranks(ys));
 }
 
+/** 길이 교란으로 볼 상관 크기. 이보다 작으면 크기 자체가 문제가 아니다. */
+export const LENGTH_CONFOUND_RHO = 0.5;
+
+/** 우연으로 설명되지 않는다고 볼 선. */
+export const LENGTH_CONFOUND_ALPHA = 0.05;
+
+/**
+ * 미달을 말할 수 있는 최소 구간 수.
+ *
+ * n=4 는 완전 단조여도 양측 최소 p 가 2/24 = 0.083 이라 어떤 값이 나와도 0.05 를
+ * 못 넘는다. 기각이 원리적으로 불가능한 크기에서 미달을 찍으면 그것은 측정이 아니다.
+ */
+export const MIN_PERIODS_FOR_LENGTH_REJECT = 5;
+
+/**
+ * 통과를 말할 수 있는 최소 구간 수.
+ *
+ * 통과는 "교란이 없다" 는 주장이라 기각보다 비싸다. 귀무가설에서 |rho| >= 0.5 가
+ * 나오는 확률을 순열 전수로 세면 n=5 에서 0.450, n=12 에서 0.098 이다. 10% 아래로
+ * 처음 떨어지는 자리가 12 라 거기를 선으로 잡는다. 그 아래에서 상관이 작게 나온 것은
+ * 교란이 없어서가 아니라 이 크기에서는 어차피 그렇게 나오기 때문이다.
+ *
+ * 전수 열거(2026-08-19):
+ *   n     4     5     6     7     8     9    10    12    14    16
+ *   P  .417  .450  .297  .267  .216  .178  .143  .098  .070  .051
+ */
+export const MIN_PERIODS_FOR_LENGTH_PASS = 12;
+
+/** 길이 교란 순열 검정 횟수. 순열이 유한하면 전수로 돈다. */
+const LENGTH_PERMUTATIONS = 2000;
+
+export interface LengthConfoundResult {
+  verdict: GateVerdict;
+  rho: number;
+  /** 귀무 분포에서 |rho| 이상이 나올 비율. 판정 불가면 NaN. */
+  p: number;
+  n: number;
+}
+
+/**
+ * 구간 점수가 구간 크기를 따라가는지.
+ *
+ * 초판은 rho 를 임계와 한 번 견주고 끝냈다. 구간이 다섯이면 교란이 하나도 없어도
+ * |rho| >= 0.5 가 45% 확률로 나오므로, 그 판정은 교란이 아니라 표본 부족을 읽는다.
+ * 실제로 6축 중 4축이 미달이었는데 귀무가설에서 기대되는 수가 2.7 이었다.
+ *
+ * 크기와 우연을 함께 본다. 크고(rho) 우연으로 설명되지 않을 때(p)만 미달이다.
+ * 둘 중 하나만 만족하면 판정하지 않는다. 통과는 더 비싸서 구간 수까지 본다.
+ */
+export function lengthConfoundVerdict(
+  scores: number[],
+  sessionCounts: number[],
+): LengthConfoundResult {
+  const n = Math.min(scores.length, sessionCounts.length);
+  const rho = spearman(scores.slice(0, n), sessionCounts.slice(0, n));
+  if (Number.isNaN(rho) || n < MIN_PERIODS_FOR_LENGTH_REJECT) {
+    return { verdict: "not-computable", rho, p: NaN, n };
+  }
+
+  // 크기 순서만 섞는다. 점수는 그대로 두어야 "이 점수열이 이 크기열과 짝이 된 것이
+  // 우연인가" 를 묻는 것이 된다.
+  const rand = seededRandom(n * 7919 + 13);
+  const shuffled = sessionCounts.slice(0, n);
+  let atLeastAsExtreme = 0;
+  for (let iter = 0; iter < LENGTH_PERMUTATIONS; iter += 1) {
+    shuffle(shuffled, rand);
+    const r = spearman(scores.slice(0, n), shuffled);
+    if (!Number.isNaN(r) && Math.abs(r) >= Math.abs(rho)) atLeastAsExtreme += 1;
+  }
+  const p = atLeastAsExtreme / LENGTH_PERMUTATIONS;
+
+  if (Math.abs(rho) >= LENGTH_CONFOUND_RHO && p < LENGTH_CONFOUND_ALPHA) {
+    return { verdict: "fail", rho, p, n };
+  }
+  // 크게 나왔지만 우연을 못 배제하면 판정하지 않는다. 통과로 세면 교란을 없다고 말하게 된다.
+  if (Math.abs(rho) >= LENGTH_CONFOUND_RHO) {
+    return { verdict: "not-computable", rho, p, n };
+  }
+  if (n < MIN_PERIODS_FOR_LENGTH_PASS) {
+    return { verdict: "not-computable", rho, p, n };
+  }
+  return { verdict: "pass", rho, p, n };
+}
+
 /**
  * 점수가 있는 구간만, 그 구간을 달고 남긴다.
  *
@@ -308,12 +392,12 @@ const SPLIT_HALF_PERMUTATIONS = 400;
 export const SPLIT_HALF_PASS = 0.5;
 
 /** 제자리 Fisher-Yates. 분할마다 같은 코드를 두 번 적지 않으려고 뗀다. */
-function shuffle(ids: string[], rand: () => number): void {
-  for (let i = ids.length - 1; i > 0; i -= 1) {
+function shuffle<T>(items: T[], rand: () => number): void {
+  for (let i = items.length - 1; i > 0; i -= 1) {
     const j = Math.floor(rand() * (i + 1));
-    const tmp = ids[i] as string;
-    ids[i] = ids[j] as string;
-    ids[j] = tmp;
+    const tmp = items[i] as T;
+    items[i] = items[j] as T;
+    items[j] = tmp;
   }
 }
 
@@ -873,7 +957,7 @@ export function runGate(
 
     // 세션 수는 그 점수를 낸 구간에서 뽑는다. 전 구간 배열을 앞에서 자르면 점수 없는
     // 구간 뒤로 짝이 밀린다.
-    const rLength = spearman(
+    const lengthConfound = lengthConfoundVerdict(
       scores,
       scored.map((r) => r.period.sessionIds.length),
     );
@@ -1085,15 +1169,20 @@ export function runGate(
         name: L("길이 교란", "Length confound"),
         // 상관을 못 낸 것과 임계 안에 든 것을 한 값으로 내면 안 된다. 상수열이거나
         // 모든 구간에서 분모가 0 이면 rho 가 NaN 이고, 그건 통과가 아니라 미측정이다.
-        verdict: Number.isNaN(rLength)
-          ? "not-computable"
-          : Math.abs(rLength) < 0.5
-            ? "pass"
-            : "fail",
-        value: Number.isNaN(rLength)
+        // 크기만 보고 판정하지도 않는다. 구간이 다섯이면 교란이 없어도 |rho| >= 0.5 가
+        // 45% 확률로 나와서, 그 미달은 교란이 아니라 표본 부족을 읽는다.
+        verdict: lengthConfound.verdict,
+        value: Number.isNaN(lengthConfound.rho)
           ? t(NOT_COMPUTABLE, lang)
-          : rLength.toFixed(3),
-        criterion: L("|rho| < 0.5", "|rho| < 0.5"),
+          : `${lengthConfound.rho.toFixed(3)} · p=${
+              Number.isNaN(lengthConfound.p)
+                ? t(NOT_COMPUTABLE, lang)
+                : lengthConfound.p.toFixed(3)
+            } · ${t(L("구간", "periods"), lang)} ${lengthConfound.n}`,
+        criterion: L(
+          `|rho| >= ${LENGTH_CONFOUND_RHO} 이고 p < ${LENGTH_CONFOUND_ALPHA} 이면 미달, 통과는 구간 ${MIN_PERIODS_FOR_LENGTH_PASS} 이상`,
+          `fail when |rho| >= ${LENGTH_CONFOUND_RHO} and p < ${LENGTH_CONFOUND_ALPHA}; passing needs ${MIN_PERIODS_FOR_LENGTH_PASS}+ periods`,
+        ),
       },
       // 조작 저항은 pass/fail 을 내지 않는다. 임계 10p 가 두 방향으로 깨진다.
       // 조작 없이도 연속 구간 변동 중앙값이 10p 를 넘는 축이 6개 중 5개고,
