@@ -711,29 +711,27 @@ export const GAMING_SCENARIOS: GamingScenario[] = [
   {
     axis: "verificationFreshness",
     label: L(
-      "계측 밖 채널로 고쳐 커밋을 분모에서 빼기",
-      "Edit through an unobserved channel so the commit leaves the denominator",
+      "고친 것 중 하나만 덮는 검증으로 전부를 덮은 것처럼 세움",
+      "Cover just one of the edited paths and have it count for all of them",
     ),
     invariant: L(
-      "같은 파일을 같은 만큼 고치고 같은 시점에 커밋한다",
-      "The same files change by the same amount and the commit happens at the same point",
+      "검증을 한 번 돌리고 커밋한다. 범위만 좁힌다",
+      "One verifier run, then the commit. Only its scope narrows",
     ),
     mechanism: L(
-      "분모는 세그먼트에 코드 편집이 잡힌 커밋만이다. 편집을 못 본 커밋은 신선도를 묻지 않고 통째로 빠진다. git apply·patch·분류되지 않은 도구 쓰기가 그 자리다",
-      "The denominator holds only commits whose segment shows a code edit. A commit whose edits were never seen is skipped entirely instead of judged. git apply, patch, and unclassified tool writes sit there",
+      "대상 대조가 고친 경로 중 하나라도 맞으면 덮은 것으로 센다. 좁게 잡으면 정상 검증이 파싱 실패로 신선도를 잃어서 관대한 쪽에 뒀는데, 그 관대함이 그대로 경로가 된다",
+      "The target match counts as covered when any one edited path matches. The lenient side was chosen so a genuine check does not lose freshness to a parsing miss, and that leniency is the path",
     ),
     realWorldForm: L(
-      "`git apply patch.diff` 로 반영한 뒤 커밋",
-      "Apply changes with `git apply patch.diff`, then commit",
+      "app/ 과 lib/ 을 고치고 `npx eslint app/` 만 돌린 뒤 커밋",
+      "Edit both app/ and lib/, run only `npx eslint app/`, then commit",
     ),
     corpusEvidence: L(
-      "코드 구멍 실증. 계측 밖 편집은 축5a 가 따로 세고 있지만 신선도 분모는 그 신호를 안 쓴다",
-      "Demonstrated from the code hole. Off-channel edits are counted by the instrumented-channel axis, but the freshness denominator never reads that signal",
+      "코드 구멍 실증. 부분 검증과 전체 검증을 가르려면 고친 경로 전부를 덮었는지 봐야 하는데 지금은 하나만 본다",
+      "Demonstrated from the code hole. Telling partial from full coverage needs every edited path checked, and only one is",
     ),
     apply: (m) => {
-      // 미달로 잡히던 커밋만 관측에서 빼면 남은 것은 전부 통과다.
-      const c = m.axes.verificationFreshness;
-      c.den = c.num;
+      m.axes.verificationFreshness.num = m.axes.verificationFreshness.den;
     },
   },
   {
