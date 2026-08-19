@@ -45,6 +45,13 @@ export interface HarnessSensor {
   stage: LifecycleStage;
   /** 어디서 읽었는지. 사람이 열어볼 수 있어야 한다. */
   source: string;
+  /**
+   * 훅 스크립트의 실제 경로. 설정에서 뽑히면 채운다.
+   *
+   * 정합성 검사가 "설명 없이 막는 게이트" 를 셀 때 필요하다. 이름만으로는 그 훅이
+   * 막는지 안내만 하는지 알 수 없어서, 안 막는 훅까지 미기재로 세게 된다.
+   */
+  scriptPath?: string;
 }
 
 export interface HarnessGuide {
@@ -143,6 +150,7 @@ export function scanHarness(
               execution: executionOfCommand(command),
               stage: stageOfHookEvent(event),
               source: `${path} · ${event}`,
+              scriptPath: hookScriptPathOf(command, root),
             });
           }
         }
@@ -282,6 +290,50 @@ export function scanHarness(
   return { root, sensors, guides, notScanned };
 }
 
+/**
+ * 훅 명령에서 실행되는 스크립트의 실제 경로.
+ *
+ * 인터프리터·따옴표·변수가 섞여 있다. 저장소 루트를 가리키는 변수는 스캔 중인 루트로
+ * 바꾼다. 못 뽑으면 undefined 를 낸다. 추측해서 엉뚱한 파일을 읽는 것보다 모른다고
+ * 하는 편이 낫다.
+ */
+function hookScriptPathOf(command: string, root: string): string | undefined {
+  // 치환을 쪼개기 전에 한다. `$(git rev-parse --show-toplevel)` 안에 공백이 있어서
+  // 먼저 쪼개면 토큰이 조각나고, 남은 조각이 경로처럼 보여 엉뚱한 파일을 가리킨다.
+  const expanded = command
+    .replace(/\$\(git rev-parse --show-toplevel\)/g, root)
+    .replace(/\$\{?CLAUDE_PROJECT_DIR\}?/g, root);
+  for (const raw of expanded.split(/\s+/)) {
+    const token = raw.replace(/["']/g, "");
+    if (!/\.(sh|py|mjs|js|ts)$/.test(token)) continue;
+    return token.startsWith("/") ? token : join(root, token);
+  }
+  return undefined;
+}
+
+/**
+ * 이 훅이 도구 호출을 실제로 막는가.
+ *
+ * 막지 않는 훅까지 "설명 없이 막는 게이트" 로 세면 미기재가 부풀려진다. 실측에서
+ * 네 건 중 둘이 그랬다. 하나는 permissionDecision=allow 만 내고(자동 승인), 하나는
+ * additionalContext 로 안내만 넣는 비차단 리마인더였다. 둘 다 막힌 적이 없으니
+ * 에이전트가 설명을 못 봐서 곤란해질 일도 없다.
+ */
+function hookBlocks(scriptPath: string | undefined): boolean {
+  if (scriptPath === undefined) return false;
+  let body: string;
+  try {
+    body = readFileSync(scriptPath, "utf8");
+  } catch {
+    // 못 읽으면 막는 것으로 본다. 안 보이는 게이트를 통과로 세면 검사가 눈을 감는다.
+    return true;
+  }
+  return (
+    /"deny"|"block"/.test(body) ||
+    /\bexit\s+2\b|sys\.exit\(\s*2\s*\)/.test(body)
+  );
+}
+
 export interface CoherenceReport {
   /** 어느 규칙 문서에도 이름이 안 나오는 센서. 설명 없이 막는 게이트다. */
   undocumentedSensors: string[];
@@ -318,9 +370,12 @@ export function checkCoherence(
       continue;
     }
   }
+  // 막는 훅만 센다. 안내만 하는 훅은 설명을 못 봐서 곤란해질 일이 없다.
   const names = [
     ...new Set(
-      inventory.sensors.filter((s) => s.kind === "hook").map((s) => s.name),
+      inventory.sensors
+        .filter((s) => s.kind === "hook" && hookBlocks(s.scriptPath))
+        .map((s) => s.name),
     ),
   ];
   return {
