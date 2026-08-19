@@ -396,7 +396,11 @@ export function computeSessionMetrics(
     }
 
     if (kind.verifierKinds.length > 0) {
-      segment.lastVerifier = order;
+      // 같은 호출에 커밋이 있으면 순서를 본다. 커밋 뒤에만 검증이 있는 호출은
+      // 커밋된 트리를 검증한 것이 아니라서 신선도의 근거가 못 된다.
+      if (!kind.isCommit || kind.hasVerifierBeforeCommit) {
+        segment.lastVerifier = order;
+      }
       const seen = blockKinds.get(agentKey) ?? new Set<string>();
       for (const vk of kind.verifierKinds) {
         axes.verificationRedundancy.den += 1;

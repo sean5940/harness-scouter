@@ -267,8 +267,18 @@ const SCRIPT_KINDS: ReadonlyArray<readonly [string, RegExp]> = [
   ["build", /^(build|compile)$/],
 ];
 
+/**
+ * 도구를 부르지만 아무것도 검증하지 않는 인자.
+ *
+ * `npx tsc --version`은 tsc를 부르고도 코드를 안 본다. 이걸 검증으로 세면 커밋 앞에
+ * 한 줄 접합하는 것만으로 신선도가 만점이 된다. 출력으로는 못 가른다. 조용히 통과하는
+ * tsc는 출력이 아예 없어서 버전 조회와 구분이 안 되기 때문이다.
+ */
+const NO_OP_VERIFIER_FLAG = /^(--version|-v|-V|--help|-h)$/;
+
 function verifierKindsOf(tokens: string[]): string[] {
   const kinds = new Set<string>();
+  if (tokens.some((t) => NO_OP_VERIFIER_FLAG.test(t))) return [];
   let i = 0;
   // npx·bunx는 다음 토큰이 실제 실행 대상이다.
   if (tokens[0] === "npx" || tokens[0] === "bunx" || tokens[0] === "pnpx")
@@ -563,6 +573,13 @@ function gitCommitOf(tokens: string[]): {
 export interface BashClassification {
   isFormatter: boolean;
   verifierKinds: string[];
+  /**
+   * 한 호출 안에서 검증이 커밋보다 앞섰는가. 커밋이 없는 호출은 항상 false 다.
+   *
+   * 이 값이 없으면 `git commit && tsc` 가 `tsc && git commit` 과 구분되지 않아,
+   * 커밋한 뒤에 돈 검증도 커밋 전 검증으로 잡힌다.
+   */
+  hasVerifierBeforeCommit: boolean;
   /** 파일 찾기와 내용 찾기의 합집합. 진단이 둘을 함께 볼 때 쓴다. */
   isRecursiveSearch: boolean;
   /** `find -name` 류. 옳은 대안은 Glob 도구다. */
@@ -582,6 +599,7 @@ export interface BashClassification {
 const EMPTY: BashClassification = {
   isFormatter: false,
   verifierKinds: [],
+  hasVerifierBeforeCommit: false,
   isRecursiveSearch: false,
   isFileFind: false,
   isContentSearch: false,
@@ -623,6 +641,10 @@ export function classifyBash(
   let fileWriteTarget: string | null = null;
   let isCommit = false;
   let isCommitAmend = false;
+  // 한 호출 안에서 검증이 커밋보다 앞섰는지. 순서를 접어버리면
+  // `git commit && tsc` 와 `tsc && git commit` 이 같은 값이 되어, 순서만 바꿔서
+  // 신선도를 올리는 경로가 열린다.
+  let hasVerifierBeforeCommit = false;
 
   for (const segment of segments) {
     const tokens = meaningfulTokens(segment);
@@ -633,7 +655,10 @@ export function classifyBash(
       continue;
     }
 
-    verifierKinds.push(...verifierKindsOf(tokens));
+    const segmentVerifiers = verifierKindsOf(tokens);
+    if (segmentVerifiers.length > 0 && !isCommit)
+      hasVerifierBeforeCommit = true;
+    verifierKinds.push(...segmentVerifiers);
     const searchKind = searchKindOfSegment(tokens);
     if (searchKind === "file") isFileFind = true;
     if (searchKind === "content") isContentSearch = true;
@@ -662,6 +687,8 @@ export function classifyBash(
   return {
     isFormatter,
     verifierKinds: [...verifierKinds],
+    // 커밋이 없으면 비교 대상이 없으므로 참을 내지 않는다.
+    hasVerifierBeforeCommit: isCommit && hasVerifierBeforeCommit,
     isRecursiveSearch: globReplaceableFind || isContentSearch,
     isFileFind: globReplaceableFind,
     isContentSearch,
