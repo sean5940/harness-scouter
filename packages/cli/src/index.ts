@@ -408,6 +408,14 @@ async function main(): Promise<void> {
               `${stats.fullReparses} full reparses`,
             )
           : null,
+        // 제외를 조용히 하면 코퍼스가 줄어든 이유를 나중에 못 찾는다.
+        db.excludedSyntheticCount() > 0
+          ? say(
+              lang,
+              `임시 워크스페이스 ${db.excludedSyntheticCount()}개 세션은 코퍼스에서 제외`,
+              `${db.excludedSyntheticCount()} sessions in temp workspaces excluded from the corpus`,
+            )
+          : null,
         say(
           lang,
           `${(elapsedMs / 1000).toFixed(1)}초`,

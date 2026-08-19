@@ -1,5 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 
+import { isSyntheticWorkspace } from "./definitions.js";
 import type { ExtractedFacts } from "./extract.js";
 import type { FileCursor } from "./parser.js";
 
@@ -21,6 +22,9 @@ CREATE TABLE IF NOT EXISTS file_cursor (
 CREATE TABLE IF NOT EXISTS session (
   session_id TEXT PRIMARY KEY,
   project    TEXT NOT NULL,
+  -- 트랜스크립트가 적어준 작업 경로. project는 디렉토리 이름을 되돌린 추측이라
+  -- 슬래시와 점을 구분하지 못하는데, 이 값은 원본 그대로다.
+  cwd        TEXT,
   git_branch TEXT,
   started_at TEXT,
   ended_at   TEXT,
@@ -120,6 +124,24 @@ export class ScouterDb {
     this.db.exec("PRAGMA journal_mode = WAL");
     this.db.exec("PRAGMA synchronous = NORMAL");
     this.db.exec(SCHEMA);
+    this.migrate();
+  }
+
+  /**
+   * 이미 만들어진 DB에 뒤늦게 생긴 열을 붙인다.
+   *
+   * `CREATE TABLE IF NOT EXISTS`는 표가 있으면 통째로 건너뛰므로 열 추가가 반영되지
+   * 않는다. 없는 열을 참조하는 쿼리는 그때 처음 죽는데, 스캔 훅이 출력을 버리는 자리라
+   * 조용히 실패한다.
+   */
+  private migrate(): void {
+    const columns = this.db
+      .prepare("SELECT name FROM pragma_table_info('session')")
+      .all() as unknown as Array<{ name: string }>;
+    const have = new Set(columns.map((c) => c.name));
+    if (!have.has("cwd")) {
+      this.db.exec("ALTER TABLE session ADD COLUMN cwd TEXT");
+    }
   }
 
   close(): void {
@@ -174,24 +196,50 @@ export class ScouterDb {
           .run(path);
       }
 
+      // 같은 세션에 대한 upsert가 파일 수만큼, 증분 회차마다 일어난다. 그중 상당수는
+      // 타임스탬프도 entrypoint도 스킬도 없는 조각이라, 조각이 이긴 필드는 값을 잃는다.
+      // 특히 MIN/MAX 스칼라는 인자 하나가 NULL이면 NULL을 내므로 started_at이 통째로
+      // 지워졌고, 그 세션은 listSessions()의 started_at IS NOT NULL에서 탈락해
+      // 코퍼스에서 사라졌다. 2026-08-19 실측으로 111개 중 32개가 이렇게 빠져 있었다.
+      // 하필 파일을 많이 걸친 큰 세션이 걸린다(결손 평균 12.3파일 대 정상 2.4).
       const upsertSession = this.db.prepare(`
-        INSERT INTO session (session_id, project, git_branch, started_at, ended_at,
+        INSERT INTO session (session_id, project, cwd, git_branch, started_at, ended_at,
                              model, cc_version, entrypoint, exec_mode, skills_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(session_id) DO UPDATE SET
+          cwd        = COALESCE(excluded.cwd, session.cwd),
           git_branch = COALESCE(excluded.git_branch, session.git_branch),
-          started_at = MIN(COALESCE(session.started_at, excluded.started_at), excluded.started_at),
-          ended_at   = MAX(COALESCE(session.ended_at, excluded.ended_at), excluded.ended_at),
+          started_at = CASE
+            WHEN session.started_at IS NULL THEN excluded.started_at
+            WHEN excluded.started_at IS NULL THEN session.started_at
+            ELSE MIN(session.started_at, excluded.started_at) END,
+          ended_at = CASE
+            WHEN session.ended_at IS NULL THEN excluded.ended_at
+            WHEN excluded.ended_at IS NULL THEN session.ended_at
+            ELSE MAX(session.ended_at, excluded.ended_at) END,
           model      = COALESCE(excluded.model, session.model),
           cc_version = COALESCE(excluded.cc_version, session.cc_version),
           entrypoint = COALESCE(excluded.entrypoint, session.entrypoint),
-          exec_mode  = excluded.exec_mode,
-          skills_json = excluded.skills_json
+          exec_mode  = CASE WHEN excluded.exec_mode = 'unknown'
+                            THEN session.exec_mode ELSE excluded.exec_mode END,
+          skills_json = (
+            SELECT json_group_array(value) FROM (
+              SELECT value FROM json_each(
+                CASE WHEN json_valid(session.skills_json)
+                     THEN session.skills_json ELSE '[]' END)
+              UNION
+              SELECT value FROM json_each(
+                CASE WHEN json_valid(excluded.skills_json)
+                     THEN excluded.skills_json ELSE '[]' END)
+              ORDER BY value
+            )
+          )
       `);
       for (const s of facts.sessions.values()) {
         upsertSession.run(
           s.sessionId,
           s.project,
+          s.cwd,
           s.gitBranch,
           s.startedAt,
           s.endedAt,
@@ -314,11 +362,27 @@ export class ScouterDb {
     }
   }
 
-  /** 세션을 시작 시각순으로. 구간 분할기가 이 순서를 전제한다. */
+  /**
+   * 세션을 시작 시각순으로. 구간 분할기가 이 순서를 전제한다.
+   *
+   * 임시 워크스페이스 세션은 뺀다. 몇 개를 뺐는지는 excludedSyntheticCount()가 낸다.
+   * 조용히 빼면 코퍼스가 줄어든 것이 규칙 때문인지 일을 덜 한 것인지 못 가린다.
+   */
   listSessions(): SessionMeta[] {
+    return this.allSessions().filter((s) => !isSyntheticWorkspace(s.project));
+  }
+
+  /** 코퍼스에서 뺀 임시 워크스페이스 세션 수. */
+  excludedSyntheticCount(): number {
+    return this.allSessions().filter((s) => isSyntheticWorkspace(s.project))
+      .length;
+  }
+
+  private allSessions(): SessionMeta[] {
     return this.db
       .prepare(
-        `SELECT session_id, project, git_branch, started_at, ended_at, exec_mode, skills_json
+        `SELECT session_id, COALESCE(cwd, project) AS project,
+                git_branch, started_at, ended_at, exec_mode, skills_json
          , COALESCE(
              (SELECT SUM(turns) FROM session_turn t WHERE t.session_id = session.session_id),
              0

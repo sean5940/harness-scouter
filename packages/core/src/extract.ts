@@ -131,6 +131,7 @@ export function extractFacts(
       session = {
         sessionId,
         project: projectDir,
+        cwd: null,
         gitBranch: null,
         startedAt: null,
         endedAt: null,
@@ -153,6 +154,7 @@ export function extractFacts(
       if (session.endedAt === null || ts > session.endedAt)
         session.endedAt = ts;
     }
+    if (entry.cwd !== undefined) session.cwd = entry.cwd;
     if (entry.gitBranch !== undefined) session.gitBranch = entry.gitBranch;
     if (entry.version !== undefined) session.ccVersion = entry.version;
     if (entry.entrypoint !== undefined) {

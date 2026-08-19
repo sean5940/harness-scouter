@@ -43,7 +43,10 @@ export type ExecMode = "interactive" | "headless" | "unknown";
 
 export interface SessionRow {
   sessionId: string;
+  /** 디렉토리 이름을 되돌린 추측. `/`와 `.`이 똑같이 `-`로 인코딩돼 정확하지 않다. */
   project: string;
+  /** 트랜스크립트가 적어준 작업 경로 원본. 있으면 project 대신 이걸 쓴다. */
+  cwd: string | null;
   gitBranch: string | null;
   startedAt: string | null;
   endedAt: string | null;
