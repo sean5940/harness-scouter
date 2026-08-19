@@ -727,8 +727,8 @@ export const GAMING_SCENARIOS: GamingScenario[] = [
       "Edit both app/ and lib/, run only `npx eslint app/`, then commit",
     ),
     corpusEvidence: L(
-      "코드 구멍 실증. 부분 검증과 전체 검증을 가르려면 고친 경로 전부를 덮었는지 봐야 하는데 지금은 하나만 본다",
-      "Demonstrated from the code hole. Telling partial from full coverage needs every edited path checked, and only one is",
+      "코드 구멍 실증. 전부를 요구하는 쪽을 실측해 보고 되돌린 기록이 있다. 신선도가 35 에서 20 으로 떨어지는데 split-half 가 0.635 에서 0.516 으로 같이 떨어졌다. 판별을 더한 것이 아니라 잡음을 더한 변경이라 관대한 쪽을 남겼고, 그 선택이 이 경로다",
+      "Demonstrated from the code hole. The strict variant was measured and reverted: freshness fell 35 to 20 while split-half fell 0.635 to 0.516, so it added noise rather than discrimination. The lenient side was kept deliberately, and that choice is this path",
     ),
     apply: (m) => {
       m.axes.verificationFreshness.num = m.axes.verificationFreshness.den;

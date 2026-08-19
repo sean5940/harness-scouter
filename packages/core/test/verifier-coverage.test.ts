@@ -103,6 +103,23 @@ describe("고친 것을 안 덮는 검증은 신선도의 근거가 아니다", 
     ).toEqual({ num: 1, den: 1 });
   });
 
+  it("맨 파일이름으로 꼬리를 맞추지 않는다", () => {
+    // 대상 `util.ts` 가 아무 디렉토리의 `util.ts` 에나 붙으면, 안 본 파일을 덮은
+    // 것으로 셀 수 있다. 구분자를 낀 대상만 꼬리 일치를 쓴다.
+    const got = freshnessOf("npx eslint util.ts", "app/deep/util.ts");
+    expect(got).toEqual({ num: 0, den: 1 });
+  });
+
+  it("구분자를 낀 상대경로는 그대로 덮는다", () => {
+    // 편집은 절대경로, 명령은 저장소 기준 상대경로라 이 경로가 정상 동작이다.
+    expect(
+      freshnessOf(
+        "npx eslint app/deep/util.ts",
+        "/Users/me/proj/app/deep/util.ts",
+      ),
+    ).toEqual({ num: 1, den: 1 });
+  });
+
   it("다른 저장소로 옮겨 돌린 검증은 덮지 않는다", () => {
     const got = freshnessOf(
       "cd ~/Source/rn-preview && npx vitest run",

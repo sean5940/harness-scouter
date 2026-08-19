@@ -132,9 +132,12 @@ function verifierCoversEdits(
         .replace(/^~/, "")
         .replace(/\/+$/, "");
       if (base === "") return true;
-      return (
-        edited === base || edited.includes(`${base}/`) || edited.endsWith(base)
-      );
+      if (edited === base) return true;
+      if (edited.includes(`${base}/`)) return true;
+      // 꼬리 일치는 구분자를 낀 것만 인정하고, 대상에 구분자가 있어야 쓴다.
+      // 맨 파일이름으로 꼬리를 맞추면 `a.ts` 가 아무 디렉토리의 `a.ts` 에나 붙어서,
+      // 안 본 파일을 덮은 것으로 셀 수 있다.
+      return base.includes("/") && edited.endsWith(`/${base}`);
     }),
   );
 }
