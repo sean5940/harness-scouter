@@ -130,6 +130,7 @@ const USAGE: Localized = L(
   `harness-scouter
 
   scouter scan [--root <path>] [--db <path>]    트랜스크립트를 증분 스캔한다
+       [--rebuild]                              사실 테이블을 비우고 처음부터 다시 읽는다
   scouter status [--db <path>] [--all]          능력치 스테이터스 창 (--all 이면 전수 집계)
   scouter report [--db <path>] [--project <s>]  최신 구간의 6축 원시값을 본다
   scouter periods [--db <path>]                 구간 목록을 본다
@@ -150,6 +151,7 @@ const USAGE: Localized = L(
   `harness-scouter
 
   scouter scan [--root <path>] [--db <path>]      Scan transcripts incrementally
+       [--rebuild]                                Clear fact tables and read from scratch
   scouter status [--db <path>] [--all]            Stat window (--all aggregates every period)
   scouter report [--db <path>] [--project <s>]    Raw six-axis values for the latest period
   scouter periods [--db <path>]                   List the periods
@@ -370,6 +372,18 @@ async function main(): Promise<void> {
   if (command === "scan") {
     const db = openDb(flags);
     const root = flags.get("root") ?? defaultTranscriptRoot();
+    // 추출·병합 규칙을 고친 뒤에는 증분으로 못 고친다. 이미 들어간 행이 낡은 규칙으로
+    // 만든 값 그대로 남고, 커서가 앞서 있어 그 파일을 다시 읽지 않기 때문이다.
+    if (flags.get("rebuild") === "true") {
+      db.reset();
+      process.stderr.write(
+        say(
+          lang,
+          "재빌드: 사실 테이블을 비우고 처음부터 읽습니다\n",
+          "Rebuild: cleared fact tables, reading from scratch\n",
+        ),
+      );
+    }
     process.stderr.write(say(lang, `스캔: ${root}\n`, `Scanning: ${root}\n`));
     const started = process.hrtime.bigint();
     const stats = await scan(db, {

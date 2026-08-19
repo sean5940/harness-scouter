@@ -108,6 +108,18 @@ CREATE INDEX IF NOT EXISTS idx_session_started ON session(started_at);
 CREATE INDEX IF NOT EXISTS idx_session_event ON session_event(session_id, kind);
 `;
 
+/** 트랜스크립트에서 파생된 사실 테이블 전부. 개수 집계와 재빌드가 같은 목록을 쓴다. */
+const DATA_TABLES = [
+  "session",
+  "tool_call",
+  "tool_result",
+  "artifact",
+  "session_event",
+  "session_turn",
+  "usage",
+  "file_cursor",
+] as const;
+
 export interface ScanStats {
   filesScanned: number;
   filesChanged: number;
@@ -469,19 +481,27 @@ export class ScouterDb {
     return new Set(rows.map((r) => r.kind));
   }
 
+  /**
+   * 사실 테이블을 전부 비운다. 커서까지 지우므로 다음 스캔이 전 파일을 처음부터 읽는다.
+   *
+   * 추출·병합 규칙을 고쳤을 때 쓴다. 규칙만 고치면 이미 들어간 행은 낡은 규칙으로 만든
+   * 값 그대로 남고, 커서가 앞서 있어 그 파일을 다시 읽지도 않는다. 이 테이블은 전부
+   * 트랜스크립트에서 파생된 것이라 지워도 잃는 원본이 없다.
+   */
+  reset(): void {
+    this.db.exec("BEGIN");
+    try {
+      for (const t of DATA_TABLES) this.db.exec(`DELETE FROM ${t}`);
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   counts(): Record<string, number> {
-    const tables = [
-      "session",
-      "tool_call",
-      "tool_result",
-      "artifact",
-      "session_event",
-      "session_turn",
-      "usage",
-      "file_cursor",
-    ];
     const out: Record<string, number> = {};
-    for (const t of tables) {
+    for (const t of DATA_TABLES) {
       const row = this.db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as {
         n: number;
       };
