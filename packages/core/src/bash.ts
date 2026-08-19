@@ -314,6 +314,51 @@ function verifierKindsOf(tokens: string[]): string[] {
 }
 
 /**
+ * 검증이 겨눈 경로.
+ *
+ * 비어 있으면 프로젝트 전체를 본 것이라 무엇을 고쳤든 덮는다. 값이 있으면 그 아래만
+ * 본 것이다. 이 구분이 없으면 50개를 고치고 무관한 파일 하나에 검증을 돌려도 신선한
+ * 것으로 잡힌다.
+ *
+ * 경로로 보는 조건을 좁게 잡는다. npm 스크립트 이름(`typecheck`)이나 플래그 값
+ * (`-c vitest.config.ts`)을 경로로 세면 전체 검증이 좁은 검증으로 뒤집혀, 정상적인
+ * 검증이 신선도를 잃는다. 틀리는 방향을 "덮는다" 쪽으로 둔다.
+ */
+function verifierTargetsOf(all: string[]): string[] {
+  // 리다이렉트 뒤는 출력 대상이지 검증 대상이 아니다. 세그먼트 분리는 파이프와
+  // 연결자만 자르므로 `> /tmp/out.txt` 가 남아 있다. 루프 안에서 걸러면 앞의 플래그가
+  // 값인 줄 알고 `>` 를 먼저 삼켜서 경로만 남는다. 들어가기 전에 자른다.
+  const cut = all.findIndex((t) => /^\d*[<>]/.test(t));
+  const tokens = cut === -1 ? all : all.slice(0, cut);
+  const out: string[] = [];
+  let i = 0;
+  if (tokens[0] === "npx" || tokens[0] === "bunx" || tokens[0] === "pnpx")
+    i = 1;
+  // 러너·서브커맨드 자리는 건너뛴다. `npm run test:unit` 의 test:unit 은 파일이 아니다.
+  const bare = (tokens[i] ?? "").split("/").pop() ?? "";
+  if (/^(npm|yarn|pnpm|bun)$/.test(bare)) return [];
+  i += 1;
+  for (; i < tokens.length; i += 1) {
+    const token = tokens[i] as string;
+    // 플래그와 그 값. `-c vitest.debug.config.ts` 의 설정 파일은 검증 대상이 아니다.
+    if (token.startsWith("-")) {
+      const next = tokens[i + 1];
+      if (!token.includes("=") && next !== undefined && !next.startsWith("-"))
+        i += 1;
+      continue;
+    }
+    if (token === "run") continue;
+    const bareToken = token.replace(/^['"]|['"]$/g, "");
+    if (bareToken === "") continue;
+    // 경로로 보는 것은 구분자나 코드 확장자를 가진 토큰뿐이다.
+    const looksLikePath =
+      bareToken.includes("/") || /\.[A-Za-z0-9]{1,5}$/.test(bareToken);
+    if (looksLikePath) out.push(bareToken);
+  }
+  return out;
+}
+
+/**
  * 탐색을 두 종류로 나눈다.
  *
  * 파일 찾기(`find -name`)와 내용 찾기(`grep -r`)는 다른 작업이고 옳은 대안도 다르다.
@@ -574,6 +619,13 @@ export interface BashClassification {
   isFormatter: boolean;
   verifierKinds: string[];
   /**
+   * 검증이 겨눈 경로. 비면 프로젝트 전체를 본 것이라 무엇을 고쳤든 덮는다.
+   *
+   * 이 값이 없으면 좁은 검증과 전체 검증이 같은 값을 받아, 고친 파일과 무관한 곳에
+   * 검증을 돌려도 신선도가 오른다.
+   */
+  verifierTargets: string[];
+  /**
    * 한 호출 안에서 검증이 커밋보다 앞섰는가. 커밋이 없는 호출은 항상 false 다.
    *
    * 이 값이 없으면 `git commit && tsc` 가 `tsc && git commit` 과 구분되지 않아,
@@ -599,6 +651,7 @@ export interface BashClassification {
 const EMPTY: BashClassification = {
   isFormatter: false,
   verifierKinds: [],
+  verifierTargets: [],
   hasVerifierBeforeCommit: false,
   isRecursiveSearch: false,
   isFileFind: false,
@@ -632,6 +685,7 @@ export function classifyBash(
   // 종류가 아니라 실행 횟수를 센다. Set 이면 `npx tsc && npx tsc && npx tsc` 가
   // [tsc] 하나로 접혀 공회전이 안 보인다. 한 호출로 묶는 것이 조작 경로였다.
   const verifierKinds: string[] = [];
+  const verifierTargets: string[] = [];
   let isFormatter = false;
   let isFileFind = false;
   let isContentSearch = false;
@@ -645,8 +699,18 @@ export function classifyBash(
   // `git commit && tsc` 와 `tsc && git commit` 이 같은 값이 되어, 순서만 바꿔서
   // 신선도를 올리는 경로가 열린다.
   let hasVerifierBeforeCommit = false;
+  // `cd X && npx tsc` 로 옮겨 간 자리. meaningfulTokens 가 cd 를 걷어내므로 여기서
+  // 따로 잡는다. 이걸 버리면 다른 저장소를 검증하고도 전체 검증으로 잡혀, 지금 고친
+  // 트리와 무관한 실행이 신선도를 준다. 코퍼스에 실재하는 형태다.
+  let segmentCwd: string | null = null;
 
   for (const segment of segments) {
+    const cd = /^cd\s+(\S+)\s*$/.exec(segment);
+    if (cd?.[1] !== undefined && cd[1] !== "-") {
+      segmentCwd = cd[1];
+      continue;
+    }
+
     const tokens = meaningfulTokens(segment);
     if (tokens.length === 0) continue;
 
@@ -658,6 +722,13 @@ export function classifyBash(
     const segmentVerifiers = verifierKindsOf(tokens);
     if (segmentVerifiers.length > 0 && !isCommit)
       hasVerifierBeforeCommit = true;
+    if (segmentVerifiers.length > 0) {
+      const explicit = verifierTargetsOf(tokens);
+      // 옮겨 간 자리가 있으면 그것이 검증 범위다. 명시 경로는 그 아래 상대경로라
+      // 둘을 함께 두면 어느 하나만 맞아도 덮은 것으로 세어져 범위가 도로 넓어진다.
+      if (segmentCwd !== null) verifierTargets.push(segmentCwd);
+      else verifierTargets.push(...explicit);
+    }
     verifierKinds.push(...segmentVerifiers);
     const searchKind = searchKindOfSegment(tokens);
     if (searchKind === "file") isFileFind = true;
@@ -687,6 +758,7 @@ export function classifyBash(
   return {
     isFormatter,
     verifierKinds: [...verifierKinds],
+    verifierTargets: [...verifierTargets],
     // 커밋이 없으면 비교 대상이 없으므로 참을 내지 않는다.
     hasVerifierBeforeCommit: isCommit && hasVerifierBeforeCommit,
     isRecursiveSearch: globReplaceableFind || isContentSearch,

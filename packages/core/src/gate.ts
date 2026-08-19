@@ -700,9 +700,65 @@ export const GAMING_SCENARIOS: GamingScenario[] = [
       "Edit 50 files under app/, run `npx vitest run test/trivial.test.ts`, then commit",
     ),
     corpusEvidence: L(
-      "코드 구멍 실증. 대상 대조가 없어 관측으로는 정상 검증과 구분되지 않는다",
-      "Demonstrated from the code hole. Without target matching it is indistinguishable from a genuine check",
+      "코드 구멍 실증. 2026-08-19에 classifyBash 가 verifierTargets 를 내고 metrics 가 고친 경로와 대조하도록 바꿔 닫음. 실측에서 커밋 94건 중 3건이 credit 을 잃었다(40 → 37). 재발 감시용으로 남긴다",
+      "Demonstrated from the code hole. Closed on 2026-08-19 by having classifyBash emit verifierTargets and metrics match them against the edited paths. 3 of 94 commits lost credit (40 → 37). Kept to watch for recurrence",
     ),
+    closed: true,
+    apply: (m) => {
+      m.axes.verificationFreshness.num = m.axes.verificationFreshness.den;
+    },
+  },
+  {
+    axis: "verificationFreshness",
+    label: L(
+      "계측 밖 채널로 고쳐 커밋을 분모에서 빼기",
+      "Edit through an unobserved channel so the commit leaves the denominator",
+    ),
+    invariant: L(
+      "같은 파일을 같은 만큼 고치고 같은 시점에 커밋한다",
+      "The same files change by the same amount and the commit happens at the same point",
+    ),
+    mechanism: L(
+      "분모는 세그먼트에 코드 편집이 잡힌 커밋만이다. 편집을 못 본 커밋은 신선도를 묻지 않고 통째로 빠진다. git apply·patch·분류되지 않은 도구 쓰기가 그 자리다",
+      "The denominator holds only commits whose segment shows a code edit. A commit whose edits were never seen is skipped entirely instead of judged. git apply, patch, and unclassified tool writes sit there",
+    ),
+    realWorldForm: L(
+      "`git apply patch.diff` 로 반영한 뒤 커밋",
+      "Apply changes with `git apply patch.diff`, then commit",
+    ),
+    corpusEvidence: L(
+      "코드 구멍 실증. 계측 밖 편집은 축5a 가 따로 세고 있지만 신선도 분모는 그 신호를 안 쓴다",
+      "Demonstrated from the code hole. Off-channel edits are counted by the instrumented-channel axis, but the freshness denominator never reads that signal",
+    ),
+    apply: (m) => {
+      // 미달로 잡히던 커밋만 관측에서 빼면 남은 것은 전부 통과다.
+      const c = m.axes.verificationFreshness;
+      c.den = c.num;
+    },
+  },
+  {
+    axis: "verificationFreshness",
+    label: L(
+      "실패한 verifier 를 무시하고 커밋해도 신선도가 오름",
+      "Commit despite a failing verifier and still claim freshness",
+    ),
+    invariant: L(
+      "돌린 명령도 순서도 대상도 같다. 결과를 안 볼 뿐이다",
+      "The commands, their order, and their targets are all the same. Only the result is ignored",
+    ),
+    mechanism: L(
+      "metrics.ts 는 verifier 가 돌았는지만 본다. verifierOutcome 이 이미 성패를 내는데 신선도 판정이 그 값을 안 쓴다",
+      "metrics.ts only checks that a verifier ran. verifierOutcome already decides pass or fail, but the freshness check never reads it",
+    ),
+    realWorldForm: L(
+      "tsc 가 에러 50건을 내도 그대로 커밋",
+      "tsc reports 50 errors and the commit happens anyway",
+    ),
+    corpusEvidence: L(
+      "코드 구멍 실증. 2026-08-19에 verifierOutcome 이 fail 을 낸 검증은 신선도의 근거로 안 쓰도록 바꿔 닫음. 판정 불가는 통과 쪽에 두어 조용히 통과하는 tsc 가 안 걸린다. 재발 감시용으로 남긴다",
+      "Demonstrated from the code hole. Closed on 2026-08-19 by refusing freshness credit when verifierOutcome says fail. Undecidable stays on the passing side so a silently passing tsc is unaffected. Kept to watch for recurrence",
+    ),
+    closed: true,
     apply: (m) => {
       m.axes.verificationFreshness.num = m.axes.verificationFreshness.den;
     },

@@ -12,6 +12,7 @@ import {
   isNonTextFile,
   isIndexedSearchTool,
   isExistingFileEdit,
+  verifierOutcome,
   LARGE_FILE_LINES,
   CONTENT_SCAN_TOOLS,
   FILE_FIND_TOOLS,
@@ -103,6 +104,42 @@ export interface SessionMetrics {
 const EDIT_TOOLS = new Set(["Edit", "Write", "NotebookEdit", "MultiEdit"]);
 
 /**
+ * 이 검증이 이번 세그먼트에서 고친 것을 덮는가.
+ *
+ * 대상이 비면 프로젝트 전체를 본 것이라 무엇을 고쳤든 덮는다. 코퍼스의 검증 대다수가
+ * 이쪽이다(`npm run typecheck`·`npx vitest run`). 대상이 있으면 그 아래만 본 것이라,
+ * 고친 파일이 그 안에 있어야 한다.
+ *
+ * 경로 비교는 꼬리 일치로 한다. 편집은 절대경로로 들어오고 검증 명령은 저장소 기준
+ * 상대경로를 쓰는 것이 보통이라, 앞에서 맞추면 전부 어긋난다.
+ *
+ * 고친 것을 못 뽑았으면(경로 없는 편집) 덮는 것으로 본다. 틀리는 방향을 관대한 쪽에
+ * 두어야 정상적인 검증이 파싱 실패로 신선도를 잃지 않는다.
+ */
+function verifierCoversEdits(
+  targets: string[],
+  segment: { editedPaths: string[] },
+): boolean {
+  if (targets.length === 0) return true;
+  if (segment.editedPaths.length === 0) return true;
+  return segment.editedPaths.some((edited) =>
+    targets.some((target) => {
+      // 글롭은 첫 와일드카드 앞까지를 디렉토리로 본다. `app/**/*.tsx` → `app/`
+      // 틸데는 떼어낸다. 편집은 절대경로로 들어오는데 명령은 `cd ~/Source/x` 를 쓰는
+      // 것이 흔해서, 그대로 두면 같은 저장소인데도 하나도 안 맞아 정상 검증이
+      // 통째로 신선도를 잃는다. 실측에서 이 한 글자로 94건 중 18건이 갈렸다.
+      const base = (target.split("*")[0] ?? "")
+        .replace(/^~/, "")
+        .replace(/\/+$/, "");
+      if (base === "") return true;
+      return (
+        edited === base || edited.includes(`${base}/`) || edited.endsWith(base)
+      );
+    }),
+  );
+}
+
+/**
  * 재검색으로 볼 창 크기.
  *
  * 같은 것을 "다시" 찾았다고 하려면 시간적으로 붙어 있어야 한다. 창이 없으면 세션이
@@ -143,6 +180,13 @@ interface CommitSegment {
   lastCodeEdit: number;
   lastVerifier: number;
   hasCodeEdit: boolean;
+  /**
+   * 이 세그먼트에서 고친 파일 경로.
+   *
+   * 검증이 겨눈 경로와 대조한다. 이게 없으면 50개를 고치고 무관한 파일 하나에 검증을
+   * 돌려도 신선한 것으로 잡힌다.
+   */
+  editedPaths: string[];
 }
 
 /**
@@ -191,6 +235,7 @@ export function computeSessionMetrics(
     lastCodeEdit: -1,
     lastVerifier: -1,
     hasCodeEdit: false,
+    editedPaths: [],
   };
   const blockKinds = new Map<string, Set<string>>();
 
@@ -310,6 +355,7 @@ export function computeSessionMetrics(
           extras.codeEdits += 1;
           segment.lastCodeEdit = order;
           segment.hasCodeEdit = true;
+          segment.editedPaths.push(path);
         }
       }
       blockKinds.set(agentKey, new Set());
@@ -361,6 +407,8 @@ export function computeSessionMetrics(
       if (isCodeFile(kind.fileWriteTarget)) {
         segment.lastCodeEdit = order;
         segment.hasCodeEdit = true;
+        if (kind.fileWriteTarget !== null)
+          segment.editedPaths.push(kind.fileWriteTarget);
       }
       blockKinds.set(agentKey, new Set());
     }
@@ -398,7 +446,17 @@ export function computeSessionMetrics(
     if (kind.verifierKinds.length > 0) {
       // 같은 호출에 커밋이 있으면 순서를 본다. 커밋 뒤에만 검증이 있는 호출은
       // 커밋된 트리를 검증한 것이 아니라서 신선도의 근거가 못 된다.
-      if (!kind.isCommit || kind.hasVerifierBeforeCommit) {
+      // 무엇을 겨눴는지도 본다. 고친 파일을 안 덮는 검증은 그 트리를 안 본 것이다.
+      // 결과도 본다. 에러를 낸 검증 위에 올린 커밋은 검증된 트리가 아니다.
+      // 성패를 못 가린 것은 통과 쪽으로 둔다. 조용히 통과하는 tsc 가 출력이 아예 없어서,
+      // 판정 불가를 실패로 보면 정상 검증이 통째로 신선도를 잃는다.
+      const orderOk = !kind.isCommit || kind.hasVerifierBeforeCommit;
+      const notFailed = verifierOutcome(call.stdout_tail) !== "fail";
+      if (
+        orderOk &&
+        notFailed &&
+        verifierCoversEdits(kind.verifierTargets, segment)
+      ) {
         segment.lastVerifier = order;
       }
       const seen = blockKinds.get(agentKey) ?? new Set<string>();
@@ -422,6 +480,7 @@ export function computeSessionMetrics(
       segment.lastCodeEdit = -1;
       segment.lastVerifier = -1;
       segment.hasCodeEdit = false;
+      segment.editedPaths.length = 0;
       lastCheckpoint.set(agentKey, order);
     }
   }
