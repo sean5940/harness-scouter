@@ -825,14 +825,18 @@ async function main(): Promise<void> {
         `  Execution   computational ${sum.byExecution.computational}  ·  inferential ${sum.byExecution.inferential}\n`,
       ),
     );
+    // STAGE_LABELS 는 Localized 라 언어를 골라야 한다. 그대로 넣으면 단계 이름이
+    // 전부 [object Object] 로 나와서 분포를 읽을 수 없다.
     const stages = (Object.keys(sum.byStage) as Array<keyof typeof sum.byStage>)
-      .map((k) => `${STAGE_LABELS[k]} ${sum.byStage[k]}`)
+      .map((k) => `${STAGE_LABELS[k][lang]} ${sum.byStage[k]}`)
       .join("  ·  ");
     process.stdout.write(
       say(lang, `  단계   ${stages}\n`, `  Stage   ${stages}\n`),
     );
     if (sum.emptyStages.length > 0) {
-      const empty = sum.emptyStages.map((k) => STAGE_LABELS[k]).join(", ");
+      const empty = sum.emptyStages
+        .map((k) => STAGE_LABELS[k][lang])
+        .join(", ");
       process.stdout.write(
         say(
           lang,
@@ -868,7 +872,7 @@ async function main(): Promise<void> {
     }
     for (const note of inventory.notScanned) {
       process.stdout.write(
-        say(lang, `  못 봄: ${note}\n`, `  Not read: ${note}\n`),
+        say(lang, `  못 봄: ${note[lang]}\n`, `  Not read: ${note[lang]}\n`),
       );
     }
     process.stdout.write(
