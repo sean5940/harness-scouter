@@ -503,17 +503,18 @@ export const GAMING_SCENARIOS: GamingScenario[] = [
       "Bytes read and call count stay the same",
     ),
     mechanism: L(
-      "definitions.ts isEffectivePartialRead 가 시작줄 `from <= 1` 하나로 전체읽기를 판정한다. (500,499,2) 가 true 다",
-      "definitions.ts isEffectivePartialRead decides a full read on the start line `from <= 1` alone. (500,499,2) is true",
+      "isEffectivePartialRead 가 시작줄 하나로 전체읽기를 판정했다. (500,499,2) 가 true 였다",
+      "isEffectivePartialRead decided a full read on the start line alone. (500,499,2) used to be true",
     ),
     realWorldForm: L(
       "PreToolUse:Read 훅이 offset 이 없으면 2를 주입",
       "A PreToolUse:Read hook injects 2 when offset is absent",
     ),
     corpusEvidence: L(
-      "흔적 없음 (read_offset 2 가 0건). 코드 구멍 실증",
-      "No trace (read_offset 2 in 0 cases). Demonstrated from the code hole, not observed",
+      "흔적 없음 (read_offset 2 가 0건). 코드 구멍 실증. 2026-08-19에 시작줄을 안 보고 커버리지로만 판정하도록 바꿔 닫음. 재발 감시용으로 남긴다",
+      "No trace (read_offset 2 in 0 cases). Demonstrated from the code hole. Closed on 2026-08-19 by deciding on coverage alone instead of the start line. Kept to watch for recurrence",
     ),
+    closed: true,
     apply: (m) => {
       m.axes.readScope.num = m.axes.readScope.den;
     },
@@ -588,9 +589,63 @@ export const GAMING_SCENARIOS: GamingScenario[] = [
       "PreToolUse:Bash splices `npx tsc --version;` in front of git commit",
     ),
     corpusEvidence: L(
-      "커밋 704건 중 41건이 이미 동봉 형태 (--version 형태는 0건)",
-      "41 of 704 commits are already in bundled form (0 in the --version form)",
+      "커밋 704건 중 41건이 이미 동봉 형태 (--version 형태는 0건). 2026-08-19에 verifierKindsOf 가 --version·--help 를 검증에서 빼도록 바꿔 닫음. 재발 감시용으로 남긴다",
+      "41 of 704 commits are already in bundled form (0 in the --version form). Closed on 2026-08-19 by making verifierKindsOf drop --version and --help. Kept to watch for recurrence",
     ),
+    closed: true,
+    apply: (m) => {
+      m.axes.verificationFreshness.num = m.axes.verificationFreshness.den;
+    },
+  },
+  {
+    axis: "verificationFreshness",
+    label: L(
+      "고친 파일과 무관한 대상에 verifier 를 돌려 신선도를 세움",
+      "Run the verifier on something unrelated to the edited files",
+    ),
+    invariant: L(
+      "커밋된 코드가 검증된 적 없다는 사실이 그대로다",
+      "The committed code still has never been verified",
+    ),
+    mechanism: L(
+      "metrics.ts 는 verifier 의 순서만 보고 대상을 안 본다. 어느 파일을 고쳤는지와 무엇을 검증했는지를 대조하는 코드가 없다",
+      "metrics.ts only looks at the verifier order, never its target. Nothing compares which files were edited against what was verified",
+    ),
+    realWorldForm: L(
+      "app/ 50개 파일을 고치고 `npx vitest run test/trivial.test.ts` 하나를 돌린 뒤 커밋",
+      "Edit 50 files under app/, run `npx vitest run test/trivial.test.ts`, then commit",
+    ),
+    corpusEvidence: L(
+      "코드 구멍 실증. 대상 대조가 없어 관측으로는 정상 검증과 구분되지 않는다",
+      "Demonstrated from the code hole. Without target matching it is indistinguishable from a genuine check",
+    ),
+    apply: (m) => {
+      m.axes.verificationFreshness.num = m.axes.verificationFreshness.den;
+    },
+  },
+  {
+    axis: "verificationFreshness",
+    label: L(
+      "커밋 뒤에 verifier 를 같은 호출로 이어붙여 신선도를 세움",
+      "Chain a verifier after the commit in the same call to claim freshness",
+    ),
+    invariant: L(
+      "검증을 도는 시점과 횟수가 같다. 순서만 바뀐다",
+      "When and how often verification runs stays the same. Only the order changes",
+    ),
+    mechanism: L(
+      "classifyBash 가 한 호출을 세그먼트로 안 쪼개고 boolean 만 낸다. metrics.ts 가 같은 order 에서 verifier(398행)를 커밋(411행)보다 먼저 처리해 커밋 뒤에 돈 검증도 앞선 것으로 잡힌다",
+      "classifyBash emits booleans without splitting a call into segments. metrics.ts handles the verifier (line 398) before the commit (line 411) at the same order, so a check that ran after the commit still counts as preceding it",
+    ),
+    realWorldForm: L(
+      "`git commit -m x && npx tsc --noEmit` 한 줄로 커밋하고 검증",
+      "Commit and verify in one line: `git commit -m x && npx tsc --noEmit`",
+    ),
+    corpusEvidence: L(
+      "커밋 704건 중 41건이 검증 동봉 형태. 2026-08-19에 classifyBash 가 hasVerifierBeforeCommit 을 내고 metrics.ts 가 그걸 보도록 바꿔 닫음. 재발 감시용으로 남긴다",
+      "41 of 704 commits bundle a check. Closed on 2026-08-19 by having classifyBash emit hasVerifierBeforeCommit and metrics.ts honor it. Kept to watch for recurrence",
+    ),
+    closed: true,
     apply: (m) => {
       m.axes.verificationFreshness.num = m.axes.verificationFreshness.den;
     },

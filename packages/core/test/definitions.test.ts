@@ -20,8 +20,15 @@ describe("축1 no-op 가드", () => {
     expect(isEffectivePartialRead(1000, 200, 1)).toBe(true);
   });
 
-  it("중간부터 읽으면 줄 수가 전체와 같아도 부분읽기다", () => {
-    expect(isEffectivePartialRead(1000, 1000, 50)).toBe(true);
+  it("중간부터 읽어도 거의 다 읽었으면 부분읽기가 아니다", () => {
+    // 예전에는 시작 줄이 1이 아니면 부분읽기로 봤다. 그러면 `offset: 2`를 끼워넣는
+    // 것만으로 파일의 99%를 읽고도 부분읽기가 되고, 재현성 게이트의 "상한 도달 불가"가
+    // 이 경로로 축이 100까지 밀린다고 잡아냈다. 이제 얼마나 읽었는지로만 판정한다.
+    expect(isEffectivePartialRead(1000, 999, 2)).toBe(false);
+  });
+
+  it("중간부터 좁게 읽으면 부분읽기다", () => {
+    expect(isEffectivePartialRead(1000, 120, 50)).toBe(true);
   });
 
   it("크기를 모르면 판정하지 않는다", () => {

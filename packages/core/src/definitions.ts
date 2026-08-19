@@ -156,23 +156,35 @@ export function isExistingFileEdit(
 }
 
 /**
+ * 부분읽기로 인정하는 커버리지 상한.
+ *
+ * 2026-08-19 코퍼스의 200줄 초과 Read를 보면 커버리지가 1.0인 것이 251건이고,
+ * 그 아래로 가장 높은 값이 0.72다. 그 사이가 비어 있어서 이 구간 어디를 잘라도
+ * 진짜 부분읽기는 하나도 안 잃는다. 임계가 아니라 관측된 빈 구간이다.
+ */
+const PARTIAL_READ_MAX_COVERAGE = 0.9;
+
+/**
  * 축1의 no-op 가드.
  *
  * `Read`의 기본 동작이 최대 2000줄이므로 `limit: 2000`은 아무것도 좁히지 않는데도
  * 부분읽기로 집계된다. 이 가드가 없으면 훅으로 `limit`을 주입하는 것만으로
  * 축이 만점이 된다. 실제 결과 범위로 판정하는 것이 요청 인자로 판정하는 것보다
  * 조작에 강하다.
+ *
+ * 시작 줄은 보지 않는다. 예전에는 시작 줄이 1이 아니면 부분읽기로 봤는데, 그러면
+ * `offset: 2`를 끼워넣는 것만으로 파일의 99%를 읽고도 부분읽기가 됐다. 재현성
+ * 게이트가 이 경로로 축이 66.7에서 100까지 밀린다고 잡아냈다. 어디서 시작했는지가
+ * 아니라 얼마나 읽었는지가 좁혀 읽었다는 증거다.
  */
 export function isEffectivePartialRead(
   totalLines: number | null,
   numLines: number | null,
-  startLine: number | null,
+  _startLine: number | null,
 ): boolean {
-  if (totalLines === null) return false;
+  if (totalLines === null || totalLines <= 0) return false;
   const covered = numLines ?? totalLines;
-  const from = startLine ?? 1;
-  const readsWholeFile = covered >= totalLines && from <= 1;
-  return !readsWholeFile;
+  return covered / totalLines <= PARTIAL_READ_MAX_COVERAGE;
 }
 
 /**
