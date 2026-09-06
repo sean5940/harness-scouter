@@ -534,6 +534,15 @@ export interface StatWindowOptions {
    * 구간 중앙값보다 낮게 나와 84점이 C가 되는 일이 생긴다.
    */
   rankByAbsoluteScore?: boolean;
+  /**
+   * 이 하네스가 실제로 가진 능력. 없으면 Claude Code 프로필의 매핑에서 추론한다.
+   *
+   * 추론만 있으면 "없는 능력은 0 이 아니라 판정 불가" 규칙이 남의 하네스에서 안 선다.
+   * 매핑에 `Grep` 이 있는 한 `index-search` 도 있는 것으로 잡히는데, qmd·graphify 가
+   * 깔려 있지 않은 하네스에서 그것은 "있는데 안 썼다" 가 아니라 "없다" 다. 두 경우가
+   * 화면에서 같아 보이면 그 화면은 거짓말이다.
+   */
+  available?: ReadonlySet<Capability>;
 }
 
 export function buildStatWindow(
@@ -545,8 +554,12 @@ export function buildStatWindow(
   // 자기 자신이 분모만 늘려 백분위가 단방향으로 부풀고, best 도 자기 자신이 되어
   // 신기록 구간의 성장 여지가 0으로 사라진다.
   const closed = history.filter((p) => !p.open && p.index !== current.index);
-  const currentStats = computeStats(current);
-  const historyStats = closed.map((p) => computeStats(p));
+  // 이력 구간도 같은 능력 선언으로 잰다. 현재 창만 선언을 받으면 백분위가 서로 다른
+  // 기준으로 매겨져, 잴 수 없다고 선언한 축이 이력에서는 0 으로 살아 등급을 끌어내린다.
+  const available =
+    options.available ?? availableCapabilities(CLAUDE_CODE_PROFILE);
+  const currentStats = computeStats(current, available);
+  const historyStats = closed.map((p) => computeStats(p, available));
   const hasHistory = closed.length >= MIN_HISTORY_WINDOWS;
 
   // 구성요소마다 이력 구간에서의 값이 얼마나 흔들리는지. 점수 옆에 붙일 신뢰 근거다.
