@@ -1,6 +1,6 @@
 # Harness Scouter
 
-[한국어](README.md) · [English](README.en.md) · [日本語](README.ja.md)
+[English](README.md) · [한국어](README.ko.md) · [日本語](README.ja.md)
 
 ローカルに溜まった Claude Code のトランスクリプトから、**コーディングエージェントのハーネスの品質**を6つの能力値で数値化します。レポートではなくキャラクターのステータス画面のように見せ、低い能力値を上げる方法も一緒に出します。
 

@@ -1,112 +1,112 @@
 # Harness Scouter
 
-[한국어](README.md) · [English](README.en.md) · [日本語](README.ja.md)
+[English](README.md) · [한국어](README.ko.md) · [日本語](README.ja.md)
 
-로컬에 쌓인 Claude Code 트랜스크립트에서 **코딩 에이전트 하네스의 품질**을 6개 능력치로 수치화합니다. 리포트가 아니라 캐릭터 스테이터스 창처럼 보여주고, 낮은 능력치를 올리는 방법을 함께 냅니다.
+Turns the Claude Code transcripts sitting on your machine into 6 stats that measure **the quality of a coding agent harness**. It shows them as a character stat window rather than a report, and tells you how to raise the low ones.
 
-측정 대상은 모델이 아니라 **하네스**입니다. 같은 모델을 써도 프롬프트·컨텍스트·훅·스킬을 어떻게 짰느냐에 따라 결과가 달라지는데, 그 차이를 재려는 도구입니다.
+What gets measured is the **harness**, not the model. The same model gives different results depending on how the prompts, context, hooks, and skills were put together, and this tool tries to measure that difference.
 
 ```
-  HARNESS SCOUTER  전수 집계      Lv. 71  B
-  2026-07-02 ~ 2026-08-10 · 세션 366개 · 이력 창 30개 · 커버리지 82%
+  HARNESS SCOUTER  all-time         Lv. 71  B
+  2026-07-02 ~ 2026-08-10 · 366 sessions · 30 history windows · coverage 82%
   ────────────────────────────────────────────────────────────────────────────────
-  탐색력        ████████████░░░░░░░░░░░░  52  C   통상   46~59  최고  67
-      파일 찾기 규율        21   n= 1604
-      내용 인덱스 우선      45   n= 5608
-      근거 확보율           91   n= 1861
-  검증력        ████████████████████░░░░  81  A   통상   75~89  최고  99
-      커밋 전 검증 신선도   84   n=  415
-      검증 공회전 없음      78   n= 2131
-  완수력        █████████████████████░░░  88  A   통상   86~93  최고  98
-      산출물 도달           91   n=  178  (표시)
-      재작업 없음           88   n= 6774
-  자율성        ██████████████████████░░  90  S   통상   85~96  최고 100
-      사람 개입 없음        90   n=78760
-  규율          ████████████████░░░░░░░░  65  B   통상   69~78  최고  93
-      계측 채널 준수        59   n=11414
-      게이트 재발 없음      71   n= 2142
-  컨텍스트 효율 ████████████████░░░░░░░░  68  B   통상   64~72  최고  83
-      읽기 범위 규율        60   n= 2765
-      읽은 것 기억하기      92   n=13977
-      응답 간결성           56   n=25391
-      컨텍스트 경량성       64   n=51374
+  Retrieval          ████████████░░░░░░░░░░░░  52  C   typical   46~59  best  67
+      File-finding discipline     21   n= 1604
+      Index-first retrieval       45   n= 5608
+      Evidence before edit        91   n= 1861
+  Verification       ████████████████████░░░░  81  A   typical   75~89  best  99
+      Pre-commit check freshness  84   n=  415
+      No redundant checks         78   n= 2131
+  Delivery           █████████████████████░░░  88  A   typical   86~93  best  98
+      Reached an artifact         91   n=  178  (display)
+      No rework                   88   n= 6774
+  Autonomy           ██████████████████████░░  90  S   typical   85~96  best 100
+      No human intervention       90   n=78760
+  Discipline         ████████████████░░░░░░░░  65  B   typical   69~78  best  93
+      Instrumented-channel use    59   n=11414
+      No repeat gate hits         71   n= 2142
+  Context efficiency ████████████████░░░░░░░░  68  B   typical   64~72  best  83
+      Read-scope discipline       60   n= 2765
+      Recall of what was read     92   n=13977
+      Response brevity            56   n=25391
+      Context lightness           64   n=51374
   ────────────────────────────────────────────────────────────────────────────────
-  종합 70.9 · B  (가장 가까운 등급 컷까지 7.1p)
-  전수 집계라 등급을 절대 점수로 매겼습니다. 구간별 등급은 --all 없이 보세요.
+  Overall 70.9 · B  (7.1p to the nearest grade cut)
+  All-time aggregate, so grades come from absolute scores. Drop --all for per-period grades.
 ```
 
-숫자 자체보다 **어느 구성요소가 병목인지**가 쓸모입니다. 위 화면에서 탐색력 52를 만든 것은 `파일 찾기 규율 21` 하나이고, 그것을 고치면 탐색력이 52에서 78까지 오릅니다. 실제로 이 도구를 만들며 그렇게 썼습니다.
+The useful part is not the number itself but **which component is the bottleneck**. In the screen above, Retrieval 52 comes down to one thing, `File-finding discipline 21`, and fixing it takes Retrieval from 52 to 78. That is how I used it while building this tool.
 
-이 점수가 실제 품질과 상관있다는 외부 근거는 아직 없습니다. [알려진 한계](#알려진-한계)를 먼저 읽으시면 어디까지 믿을지 판단하실 수 있습니다.
+There is no external evidence yet that these scores correlate with actual quality. Read [Known limitations](#known-limitations) first to decide how far to trust them.
 
-## 아키텍처
+## Architecture
 
-![아키텍처](docs/architecture.svg)
+![Architecture](docs/architecture.en.svg)
 
-세 갈래가 따로 돕니다.
+Three tracks run separately.
 
-**행동 파이프라인**은 트랜스크립트에서 사실만 뽑아 SQLite에 넣고, 점수는 매번 다시 계산합니다. 정의를 고칠 때 940MB를 재파싱하지 않으려는 구조입니다. `db.ts`에 점수가 없는 것이 그래서입니다.
+**The behavior pipeline** pulls only facts out of the transcripts into SQLite, and recomputes the scores every time. The structure exists so that changing a definition does not mean reparsing 940MB. That is why there are no scores in `db.ts`.
 
-**하네스 구조 스캔**은 저장소에서 센서와 가이드의 목록을 읽습니다. 행동만 봐서는 "차단 0건"이 센서가 좋아서인지 없어서인지 갈리지 않기 때문입니다. 축 이름은 Martin Fowler의 [harness engineering](https://martinfowler.com/articles/harness-engineering.html)에서 가져왔습니다.
+**The harness structure scan** reads the inventory of sensors and guides out of the repository. Behavior alone cannot tell whether "0 blocks" means the sensors are good or that there are none. The axis names come from Martin Fowler's [harness engineering](https://martinfowler.com/articles/harness-engineering.html).
 
-**신뢰 장치**는 이 숫자를 믿어도 되는지를 잽니다. 재현성 게이트, 조작 시나리오, 맞춰볼 기준이 있는지가 여기 있습니다.
+**The trust machinery** measures whether these numbers can be trusted. The reproducibility gate, the gaming scenarios, and the validity status live here.
 
-## 데이터
+## Data
 
-전부 로컬에 있습니다. 아무것도 밖으로 나가지 않습니다. 예외는 `scouter outcomes` 하나로, 이때만 `gh`로 GitHub에 PR 목록을 물어봅니다.
+Everything is local. Nothing leaves the machine. The one exception is `scouter outcomes`, the only command that asks GitHub for a list of PRs through `gh`.
 
 ```
-~/.claude/projects/**/*.jsonl   읽기 전용 입력. 940MB
-~/.harness-scouter/scouter.sqlite   사실 테이블. 218MB
-~/.harness-scouter/labels.jsonl     사람이 붙인 라벨
+~/.claude/projects/**/*.jsonl   read-only input. 940MB
+~/.harness-scouter/scouter.sqlite   fact tables. 218MB
+~/.harness-scouter/labels.jsonl     labels applied by a person
 ```
 
-`--db`와 `--labels`로 위치를 바꿀 수 있습니다.
+`--db` and `--labels` move those locations.
 
-### SQLite를 쓰는 이유와 쓰는 방식
+### Why SQLite, and how it is used
 
-Node 22.5의 **내장 `node:sqlite`** 를 씁니다. `better-sqlite3` 같은 네이티브 모듈을 쓰면 VSCode 확장에서 Electron ABI 재빌드에 걸리는데, 내장 모듈은 그 문제가 없습니다. 그래서 의존성이 개발 도구뿐입니다.
+It uses the **built-in `node:sqlite`** from Node 22.5. A native module such as `better-sqlite3` gets caught in Electron ABI rebuilds inside the VSCode extension; the built-in module has none of that. That is why the only dependencies are dev tools.
 
-DB에는 **파싱한 사실만** 들어갑니다. 점수는 없습니다.
+The DB holds **parsed facts only**. No scores.
 
-| 테이블          | 담는 것                                           | 행 수(예) |
-| --------------- | ------------------------------------------------- | --------- |
-| `session`       | 세션 메타. 프로젝트·브랜치·모델·진입점            | 609       |
-| `tool_call`     | 도구 호출. 이름·명령·파일 경로·차단 여부·에이전트 | 71,727    |
-| `tool_result`   | 도구 결과. 읽은 줄 수·편집 종류·stdout 꼬리       | 71,719    |
-| `usage`         | 응답당 토큰. 요청 단위로 중복 제거                | 56,954    |
-| `session_event` | 중단·큐 개입·도구 거부                            | 4,997     |
-| `artifact`      | 커밋·PR·커밋 해시                                 | 1,473     |
-| `file_cursor`   | 파일별 mtime과 바이트 위치                        | 2,099     |
+| Table           | What it holds                                                       | Rows (sample) |
+| --------------- | ------------------------------------------------------------------- | ------------- |
+| `session`       | Session metadata. Project, branch, model, entry point               | 609           |
+| `tool_call`     | Tool calls. Name, command, file path, whether it was blocked, agent | 71,727        |
+| `tool_result`   | Tool results. Lines read, edit kind, stdout tail                    | 71,719        |
+| `usage`         | Tokens per response. Deduplicated per request                       | 56,954        |
+| `session_event` | Interrupts, queued input, tool denials                              | 4,997         |
+| `artifact`      | Commits, PRs, commit hashes                                         | 1,473         |
+| `file_cursor`   | Per-file mtime and byte position                                    | 2,099         |
 
-**축 점수를 저장하지 않는 것이 설계의 핵심입니다.** 지표 정의가 자주 바뀌는데, 정의를 고칠 때마다 940MB를 다시 파싱해야 하면 반복 주기가 무너집니다. 사실만 담아두고 축은 매번 계산합니다.
+**Not storing the axis scores is the core of the design.** Metric definitions change often, and if every change meant reparsing 940MB, the iteration loop would fall apart. Facts are stored; axes are computed every time.
 
-### 지워도 됩니다
+### It is safe to delete
 
-DB는 언제든 버리고 다시 만들 수 있습니다. 트랜스크립트가 원본이고 DB는 파생물입니다.
+The DB can be thrown away and rebuilt at any time. The transcripts are the original; the DB is derived.
 
 ```bash
 rm ~/.harness-scouter/scouter.sqlite*
-npm run scouter -- scan     # 940MB 전체 재파싱, 8초
+npm run scouter -- scan     # full 940MB reparse, 8s
 ```
 
-증분 스캔은 파일별 mtime과 바이트 위치를 기억해서 새로 붙은 줄만 읽습니다. 바뀐 게 없으면 1초 안에 끝납니다.
+The incremental scan remembers each file's mtime and byte position and reads only the lines appended since. With nothing changed it finishes in under 1 second.
 
-**라벨은 DB 밖에 둡니다.** 라벨은 트랜스크립트에서 다시 뽑을 수 없는 유일한 입력인데, 파생물과 같은 그릇에 두면 정의를 한 번 고칠 때마다 사라집니다. `labels.jsonl`은 append-only라 쓰는 중 죽어도 앞의 것을 잃지 않고, 사람이 직접 열어 고칠 수 있습니다.
+**Labels are kept outside the DB.** Labels are the one input that cannot be pulled out of the transcripts again, and keeping them in the same container as derived data means losing them every time a definition changes. `labels.jsonl` is append-only, so a crash mid-write does not lose what came before, and a person can open and edit it directly.
 
-## 설치
+## Install
 
-### 단일 실행파일 (Node 없이)
+### Single binary (no Node)
 
-태그마다 릴리스에 붙습니다. 런타임이 들어 있어 아무것도 미리 깔 필요가 없습니다.
+Attached to the release on every tag. The runtime is bundled, so nothing has to be installed first.
 
-| 플랫폼                | 파일                          |
+| Platform              | File                          |
 | --------------------- | ----------------------------- |
 | macOS (Apple Silicon) | `scouter-darwin-arm64.tar.gz` |
 | macOS (Intel)         | `scouter-darwin-x64.tar.gz`   |
 | Linux (x86_64)        | `scouter-linux-x64.tar.gz`    |
 
-공개 저장소라 인증 없이 받습니다. `latest` 는 항상 최신 릴리스를 가리킵니다.
+The repository is public, so no authentication is needed. `latest` always points at the newest release.
 
 ```bash
 case "$(uname -sm)" in
@@ -122,11 +122,11 @@ shasum -a 256 -c SHA256SUMS 2>/dev/null | grep OK
 ./scouter status --all
 ```
 
-Node 런타임을 통째로 담아 **105MB 안팎**입니다(압축 35MB). macOS는 ad-hoc 서명이라 처음 열 때 우클릭 열기가 필요합니다.
+It carries a whole Node runtime, so it is **around 105MB** (35MB compressed). On macOS the signature is ad-hoc, so the first open needs right-click open.
 
-### 소스에서
+### From source
 
-Node 22.5 이상이 필요합니다. `node:sqlite` 내장 모듈을 쓰기 때문에 **네이티브 의존성이 없습니다.**
+Node 22.5 or later is required. Because it uses the built-in `node:sqlite` module, **there are no native dependencies.**
 
 ```bash
 git clone https://github.com/sean5940/harness-scouter.git
@@ -136,160 +136,160 @@ npm run build
 npm run scouter -- status --all
 ```
 
-`gh` CLI는 PR 결과를 볼 때만 필요합니다(`scouter outcomes`). 없어도 나머지는 다 돕니다.
+The `gh` CLI is only needed to see PR outcomes (`scouter outcomes`). Everything else works without it.
 
-## 언어
+## Language
 
-화면은 **한국어와 영어**를 냅니다. 문서는 세 언어이고 맨 위 전환 줄에서 고를 수 있습니다.
+The screen comes in **Korean and English**. The documents are in three languages, picked from the switcher at the top.
 
 ```bash
-scouter status --all                 # 자동 감지
-scouter status --all --lang en       # 영어
-scouter status --all --lang ko       # 한국어
-SCOUTER_LANG=en scouter status --all # 환경변수로 고정
+scouter status --all                 # auto-detect
+scouter status --all --lang en       # English
+scouter status --all --lang ko       # Korean
+SCOUTER_LANG=en scouter status --all # pin it through the environment
 ```
 
-자동 감지는 **명시값 → `SCOUTER_LANG` → `LC_ALL`/`LC_MESSAGES`/`LANG` → 영어** 순입니다. 로케일은 앞 두 글자만 보므로 `ko_KR.UTF-8`이면 한국어입니다.
+Auto-detection goes **explicit value → `SCOUTER_LANG` → `LC_ALL`/`LC_MESSAGES`/`LANG` → English**. Only the first two letters of the locale are read, so `ko_KR.UTF-8` means Korean.
 
-모르는 언어를 주면 조용히 넘어가지 않고 지원 목록과 함께 실패합니다.
+An unknown language does not pass quietly. It fails, with the list of supported ones.
 
 ```
 $ scouter status --lang klingon
 알 수 없는 언어: klingon (지원: ko, en) / unknown language
 ```
 
-**언어를 바꿔도 점수는 같습니다.** 다국어화가 정의를 안 건드렸다는 뜻이고, 릴리스마다 두 언어의 점수를 대조해 확인합니다.
+**The scores are the same in either language.** That means localization did not touch the definitions, and every release checks it by comparing the scores across the two languages.
 
-## 다른 하네스에 쓰기
+## Using it on another harness
 
-지표는 도구 이름이 아니라 **능력**으로 정의돼 있습니다. 다른 하네스를 재려면 이름에서 능력으로 가는 매핑 하나만 채우면 됩니다.
+The metrics are defined by **capability**, not by tool name. Measuring another harness only takes filling in one mapping from names to capabilities.
 
-| 능력             | Claude Code                           | 무엇을 재는가                                   |
-| ---------------- | ------------------------------------- | ----------------------------------------------- |
-| `file-find`      | `Glob`                                | 파일 경로 찾기                                  |
-| `content-search` | `Grep`                                | 내용 전수 스캔                                  |
-| `index-search`   | qmd · graphify (도구·**셸 CLI 모두**) | 인덱스 기반 검색                                |
-| `index-fetch`    | `qmd get` 계열                        | 이미 아는 문서 꺼내기                           |
-| `file-read`      | `Read`                                | 파일 읽기                                       |
-| `file-edit`      | `Edit` · `Write` · `MultiEdit`        | 파일 고치기                                     |
-| `shell`          | `Bash`                                | 셸 실행                                         |
-| `subagent`       | `Agent` · `Task`                      | 위임                                            |
-| `other`          | `TodoWrite` · `AskUserQuestion` 등    | 축이 보지 않음. **모르는 것과 구별하려고 명시** |
+| Capability       | Claude Code                                  | What it measures                                                              |
+| ---------------- | -------------------------------------------- | ----------------------------------------------------------------------------- |
+| `file-find`      | `Glob`                                       | Finding file paths                                                            |
+| `content-search` | `Grep`                                       | Full scan of content                                                          |
+| `index-search`   | qmd · graphify (**both tool and shell CLI**) | Index-based search                                                            |
+| `index-fetch`    | the `qmd get` family                         | Pulling out a document already known                                          |
+| `file-read`      | `Read`                                       | Reading files                                                                 |
+| `file-edit`      | `Edit` · `Write` · `MultiEdit`               | Editing files                                                                 |
+| `shell`          | `Bash`                                       | Running a shell                                                               |
+| `subagent`       | `Agent` · `Task`                             | Delegation                                                                    |
+| `other`          | `TodoWrite`, `AskUserQuestion`, and so on    | Not seen by the axes. **Listed explicitly to keep it apart from the unknown** |
 
-**셸 칸이 핵심입니다.** 도구로 부르든 셸로 부르든 같은 일을 한 것인데, 셸을 안 보면 실사용량을 통째로 놓칩니다. 이 저장소에서 graphify CLI 호출 1,220건을 4건으로 본 적이 있습니다. 실사용량의 300분의 1입니다.
+**The shell column is the crux.** Calling through a tool and calling through the shell do the same work, and not looking at the shell loses the whole of actual usage. In this repository 1,220 graphify CLI calls were once seen as 4. 1/300 of actual use.
 
-### 없는 능력은 0점이 아니라 판정 불가
+### A missing capability is not a 0, it is no verdict
 
-이름을 맞추는 것만으로는 부족합니다. 인덱스 검색 도구가 **아예 없는** 하네스를 재면 분자가 0이고 분모는 `grep`으로 채워져 0점이 나오는데, 그건 "있는데 안 썼다"가 아니라 "없다"입니다.
-
-```
-인덱스 도구가 없는 하네스   내용 인덱스 우선  판정 불가   ← 0 점이 아님
-                          읽기 범위 규율    정상 측정
-셸만 있는 하네스           계측 채널 준수    판정 불가
-                          읽기 범위 규율    판정 불가
-```
-
-**분모가 0이 아니어도 판정 불가로 냅니다.** 분모는 대체 경로가 채우므로 분모만 보면 능력 부재를 못 읽습니다.
-
-축마다 어떤 능력이 있어야 성립하는지는 `AXIS_REQUIRES`에 있습니다. 프로필에 그 능력이 없으면 그 축은 평균에서 빠지고, **몇 개로 낸 점수인지가 화면에 함께 나옵니다.**
+Matching names is not enough. Measure a harness that has **no index search tool at all** and the numerator is 0 while the denominator fills up with `grep`, which comes out as a 0 — but that is not "had it and did not use it", it is "does not have it".
 
 ```
-탐색력  100
-    파일 찾기 규율    판정 불가
-    내용 인덱스 우선  100
-    근거 확보율      판정 불가
-    구성요소 3개 중 1개로 냈습니다
+harness with no index tool  Content index first       no verdict   ← not a 0
+                            Read range discipline     measured
+shell-only harness          Instrumented channel use  no verdict
+                            Read range discipline     no verdict
 ```
 
-아무것도 안 고치고 인덱스 검색만 반복한 세션이 실제로 이렇게 나옵니다. 점수를 억지로 낮추지 않고 **무엇으로 낸 점수인지**를 밝힙니다.
+**It comes out as no verdict even when the denominator is not 0.** The denominator gets filled by the fallback path, so the denominator alone cannot show a missing capability.
 
-### 모르는 것에는 소리가 납니다
-
-매핑표는 언제든 낡습니다. 그래서 프로필이 관측을 얼마나 덮는지 함께 잽니다.
+Which capabilities an axis needs to hold is in `AXIS_REQUIRES`. If the profile does not have them, that axis drops out of the average, and **how many components the score came from is shown along with it.**
 
 ```
-관측 도구 호출 71,727건
-  능력에 매핑됨  71,714  100.0%
-  미매핑             13    0.0%
+Exploration  100
+    File-finding discipline  no verdict
+    Content index first      100
+    Read before edit         no verdict
+    scored from 1 of 3 components
 ```
 
-**커버리지가 90% 아래로 떨어지면 점수를 내지 않고 무엇이 안 잡혔는지를 보여줍니다.** 남의 하네스에서 0점이 나오는 게 아니라 "`read_file`을 모릅니다"가 나옵니다.
+A session that fixed nothing and only repeated index searches really does come out like this. Instead of forcing the score down, it states **what the score was made of.**
 
-graphify 사고의 본질은 이름을 틀린 것이 아니라 **틀린 줄 몰랐다**는 것이었습니다. 화면은 아무 말도 하지 않았습니다.
+### Unknowns make noise
 
-## 사용
+A mapping table goes stale sooner or later. So it also measures how much of what is observed the profile covers.
 
-첫 실행은 스캔입니다. 이후에는 증분이라 몇 초면 끝납니다.
+```
+71,727 tool calls observed
+  mapped to a capability  71,714  100.0%
+  unmapped                    13    0.0%
+```
+
+**When coverage drops under 90% it does not give a score, it shows what was not caught.** Someone else's harness does not come out at 0, it comes out as "`read_file` is unknown".
+
+The heart of the graphify accident was not that a name was wrong but that **there was no way to know it was wrong**. The screen said nothing.
+
+## Usage
+
+The first run is a scan. After that it is incremental and takes a few seconds.
 
 ```bash
 npm run scouter -- scan
-# 파일 1,518개 중 1,518개 갱신 / 엔트리 310,802건 파싱 / 7.7초
+# 1,518 of 1,518 files updated / 310,802 entries parsed / 7.7s
 ```
 
-### 능력치 보기
+### Seeing the stats
 
 ```bash
-npm run scouter -- status --all   # 전수 집계
-npm run scouter -- status         # 최신 구간만
+npm run scouter -- status --all   # all periods
+npm run scouter -- status         # latest period only
 ```
 
-`--all`은 모든 구간을 합쳐 "평소 어떤가"에 답하고, 없으면 최신 구간만 봐서 "지금 어떤가"에 답합니다.
+`--all` merges every period and answers "how am I usually"; without it only the latest period is read, answering "how am I right now".
 
-### 올리는 방법 보기
+### Seeing how to raise them
 
 ```bash
 npm run scouter -- guide --all
 ```
 
-능력치마다 병목 구성요소를 짚고, 무엇을 세는지·왜 중요한지·올리는 행동·**점수만 오르고 품질은 안 오르는 안티패턴**을 냅니다.
+For each stat it points at the bottleneck component and gives what is counted, why it matters, the behavior that raises it, and **the antipatterns that raise the score without raising quality**.
 
-### 어디서 새는지 보기
+### Seeing where it leaks
 
 ```bash
 npm run scouter -- diag --all
 ```
 
-큰 파일을 통째로 읽은 곳, 검증 없이 커밋된 곳, bash로 파일을 건드린 곳을 근거 세션과 함께 냅니다. 탐색 적시성(메인 대 subagent)도 여기 있습니다.
+It lists where large files were read whole, where commits landed without verification, and where files were touched through bash, each with the sessions as evidence. Exploration timeliness (main vs subagent) is here too.
 
-### 하네스 구조 보기
+### Seeing the harness structure
 
 ```bash
 npm run scouter -- harness --root /path/to/repo
 ```
 
 ```
-  센서 96개 (자동 88 · 수동 8) · 가이드 58개
-  방향   feedforward 29  ·  feedback 67
-  실행   computational 87  ·  inferential 9
-  단계   통합 전 3  ·  자가수정 루프 53  ·  통합 후 33  ·  지속 모니터링 7
+  96 sensors (88 automatic · 8 manual) · 58 guides
+  Direction  feedforward 29  ·  feedback 67
+  Execution  computational 87  ·  inferential 9
+  Stage      pre-integration 3  ·  self-correcting loop 53  ·  post-integration 33  ·  continuous monitoring 7
 
-  가이드·센서 동기화   규칙 문서 323개에서 훅 27종 확인
-    설명 없이 막는 게이트 4종: ...
+  Guide/sensor sync   27 kinds of hook found across 323 rule documents
+    4 gates that block without explanation: ...
 ```
 
-### HTML로 보기
+### Seeing it as HTML
 
 ```bash
 npm run scouter -- html --all --root /path/to/repo --out /tmp/scouter.html
 ```
 
-육각형 레이더, 능력치 막대, 평가 기준표, 하네스 구조, 성장 가이드, 초기 대 최근 비교가 한 장에 들어갑니다. 뷰어의 밝고 어두운 테마를 모두 따릅니다.
+A hexagonal radar, the stat bars, the grading table, the harness structure, the growth guide, and an early-half against recent-half comparison all fit on one page. It follows the viewer's light and dark themes.
 
-### 그 밖
+### Everything else
 
 ```bash
-npm run scouter -- gate         # M0.5 재현성 게이트
-npm run scouter -- strata       # split-half 를 작업 유형 층 안에서 다시 돌리기
-npm run scouter -- outcomes     # PR 결과와 신호 변별력 (gh 필요)
-npm run scouter -- periods      # 구간 목록
-npm run scouter -- json         # 확장이 읽을 JSON
+npm run scouter -- gate         # M0.5 reproducibility gate
+npm run scouter -- strata       # re-run split-half inside work-type strata
+npm run scouter -- outcomes     # PR outcomes and signal discrimination (needs gh)
+npm run scouter -- periods      # list of periods
+npm run scouter -- json         # JSON for the extension
 ```
 
-## 에이전트가 직접 조회하기 (MCP)
+## Letting the agent read it directly (MCP)
 
-에이전트가 **세션 중에** 자기 하네스 품질을 읽을 수 있습니다. 사람이 사후에 보는 대시보드와 달리 행동 시점에 닿습니다.
+An agent can read the quality of its own harness **mid-session**. Unlike a dashboard a person looks at after the fact, this reaches the moment of action.
 
-`.mcp.json`이나 Claude Code 설정에 넣습니다.
+Put it in `.mcp.json` or the Claude Code settings.
 
 ```json
 {
@@ -303,239 +303,239 @@ npm run scouter -- json         # 확장이 읽을 JSON
 }
 ```
 
-| 도구              | 내는 것                                       |
-| ----------------- | --------------------------------------------- |
-| `scouter_status`  | 지금 능력치와 구성요소별 점수                 |
-| `scouter_guide`   | 낮은 능력치를 올리는 행동 · **안티패턴 포함** |
-| `scouter_diag`    | 어디서 새는지 (근거 세션 포함)                |
-| `scouter_harness` | 센서·가이드 인벤토리와 동기화 검사            |
-| `scouter_gate`    | 어느 축이 어느 화면을 뒷받침하는가            |
+| Tool              | What it gives                                                   |
+| ----------------- | --------------------------------------------------------------- |
+| `scouter_status`  | The current stats and the score of each component               |
+| `scouter_guide`   | The behavior that raises a low stat · **antipatterns included** |
+| `scouter_diag`    | Where it leaks (with the sessions as evidence)                  |
+| `scouter_harness` | The sensor and guide inventory and the sync check               |
+| `scouter_gate`    | Which axes hold up which screen                                 |
 
-**전부 읽기 전용입니다.** 라벨 쓰기나 DB 수정은 노출하지 않습니다.
+**Everything is read-only.** Writing labels and modifying the DB are not exposed.
 
-`scouter_guide`가 안티패턴을 **같은 응답에** 싣는 것은 의도한 설계입니다. 자기 점수를 보면서 점수를 올리려는 순간 조작 유인이 생기는데, 점수만 오르고 품질은 안 오르는 처방을 나란히 놓아야 그게 행동 시점에 보입니다.
+`scouter_guide` carrying the antipatterns **in the same response** is deliberate. The moment something reads its own score and moves to raise it, the incentive to game it appears, and only putting the prescriptions that raise the score without raising quality right beside it makes that visible at the moment of action.
 
-SDK 없이 stdio JSON-RPC를 직접 다뤄 **런타임 의존성이 없습니다.**
+It handles stdio JSON-RPC directly instead of going through an SDK, so **there are no runtime dependencies.**
 
-## 화면 읽는 법
+## How to read the screen
 
-### 능력치와 구성요소
+### Stats and components
 
-| 능력치        | 묻는 것                          | 구성요소                                                          |
-| ------------- | -------------------------------- | ----------------------------------------------------------------- |
-| 탐색력        | 찾아야 할 때 옳은 방법으로 찾나  | 파일 찾기 규율 · 내용 인덱스 우선 · 근거 확보율                   |
-| 검증력        | 주장 전에 확인하나               | 커밋 전 검증 신선도 · 검증 공회전 없음                            |
-| 완수력        | 산출물까지 도달하나              | 산출물 도달 · 재작업 없음                                         |
-| 자율성        | 사람 개입 없이 완주하나          | 사람 개입 없음                                                    |
-| 규율          | 정한 규칙과 도구 경로를 지키나   | 계측 채널 준수 · 게이트 재발 없음                                 |
-| 컨텍스트 효율 | 필요한 만큼만 읽고 토큰을 아끼나 | 읽기 범위 규율 · 읽은 것 기억하기 · 응답 간결성 · 컨텍스트 경량성 |
+| Stat               | What it asks                                             | Components                                                                               |
+| ------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Exploration        | When it has to find something, does it use the right way | File-finding discipline · Content index first · Read before edit                         |
+| Verification       | Does it check before it claims                           | Pre-commit verification freshness · No verification spin                                 |
+| Completion         | Does it get all the way to an artifact                   | Artifact reached · No rework                                                             |
+| Autonomy           | Does it finish without a person stepping in              | No human intervention                                                                    |
+| Discipline         | Does it stay on the agreed rules and tool paths          | Instrumented channel use · No gate repeats                                               |
+| Context efficiency | Does it read only as much as it needs and save tokens    | Read range discipline · Remembering what was read · Response brevity · Context lightness |
 
-각 능력치는 구성요소의 평균입니다. 분모가 없는 구성요소는 빠집니다.
+Each stat is the average of its components. Components with no denominator drop out.
 
-### 막대와 표시
-
-```
-탐색력   █████████████░░░░░░░░░░░  53  C   통상 46~58  최고 67
-```
-
-- **채운 막대**가 지금 값, **통상**은 내 이력의 p25~p75, **최고**는 개인 최고 기록입니다.
-- **등급**은 전수 집계에서는 절대 점수, 구간별로는 내 이력 백분위입니다.
-- HTML에서는 구성요소마다 `±` 표시가 붙습니다. 이력에서 그 값이 얼마나 덜 흔들렸는지이고, 클수록 믿을 만합니다.
-
-목표를 **개인 최고**로 잡는 이유는 절대 임계를 만들 근거가 없어서입니다. 한 번 찍어본 값은 이 하네스로 도달 가능하다는 것이 데이터로 증명된 목표입니다.
-
-### 평가 기준 — 남의 하네스에 쓸 수 있는가
-
-구성요소마다 목표의 성격과 비교 가능성을 함께 냅니다.
-
-| 목표 성격       | 뜻                                                             |
-| --------------- | -------------------------------------------------------------- |
-| `100이 목표`    | 못 채운 만큼이 그대로 결함. 절대 비교가 됩니다                 |
-| `높을수록 좋음` | 100을 목표로 둘 근거가 없습니다. 순위 비교만 뜻이 있습니다     |
-| `양극단 주의`   | 양쪽이 다 나쁠 수 있어 최대화 대상이 아닙니다. 종합에서 뺍니다 |
-
-| 오염 플래그             | 뜻                                                          |
-| ----------------------- | ----------------------------------------------------------- |
-| `훅 설치가 값을 움직임` | 차단된 호출이 축에서 빠져 방어를 깔수록 점수가 오릅니다     |
-| `도구 이름에 묶임`      | 이름이 다른 하네스에서는 그 활동이 계상에서 통째로 빠집니다 |
-| `작업 구성에 좌우`      | 사람이 아니라 그날 한 일을 잽니다                           |
-
-**오염 표시가 하나라도 있으면 사람 간 비교에 쓰지 않습니다.** 지금 14개 구성요소에 **전부** 표시가 붙어 있습니다. 이 도구는 아직 남과 비교하는 데 못 씁니다.
-
-가장 흔한 것이 `도구 이름에 묶임`입니다. 능력 층이 이름 대응을 풀고 능력 부재도 판정 불가로 가르지만, 그것으로 오염이 사라지지는 않습니다. 앵커값(토큰 1,000/4,500, 컨텍스트 100K/400K)이 이 코퍼스 분포에 맞춰져 있어 다른 하네스를 같은 눈금으로 재는 근거가 없습니다.
-
-### 구성요소별 기준
-
-무엇을 세는지(분자와 분모), 목표가 어디서 오는지, 무엇이 비교를 깨는지입니다. `scouter guide`가 같은 내용을 병목 순으로 냅니다.
-
-| 능력치        | 구성요소             | 무엇을 세는가                                                                                                                         | 목표            | 오염                  |
-| ------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------------- | --------------------- |
-| 탐색력        | 파일 찾기 규율       | 파일 경로를 찾을 때 `Glob` 도구로 간 비율. `find … -name` 이 분모의 나머지                                                            | 100이 목표      | 훅 설치 · 도구 이름   |
-| 탐색력        | 내용 인덱스 우선     | 내용·관계를 찾을 때 qmd·graphify 로 간 비율. MCP 와 CLI 를 모두 세고, 조회·진단 계열(`qmd get`·`graphify stats`)은 검색이 아니라 뺀다 | 높을수록 좋음   | 훅 설치 · 도구 이름   |
-| 탐색력        | 근거 확보율          | 기존 코드 파일을 고칠 때 그 파일을 먼저 읽은 비율. 새로 만든 파일은 읽을 것이 없어 분모에서 뺀다                                      | **100이 목표**  | 도구 이름             |
-| 검증력        | 커밋 전 검증 신선도  | 코드를 고친 커밋 중 마지막 편집 **이후에** 검증이 돈 비율                                                                             | 높을수록 좋음   | 작업 구성 · 도구 이름 |
-| 검증력        | 검증 공회전 없음     | verifier 호출 중 편집 없이 같은 종류를 다시 돌린 것의 역수                                                                            | 높을수록 좋음   | 작업 구성             |
-| 완수력        | 산출물 도달 _(표시)_ | 코드를 고친 세션 중 커밋이나 PR까지 간 비율. **점수에 넣지 않음**                                                                     | 높을수록 좋음   | 작업 구성             |
-| 완수력        | 재작업 없음          | 편집 중 검증이나 커밋을 넘긴 뒤 같은 파일을 다시 고친 것의 역수                                                                       | 높을수록 좋음   | 도구 이름             |
-| 자율성        | 사람 개입 없음       | assistant 턴 100회당 개입. 중단·주행 중 큐 입력·도구 거부를 합쳐 센다                                                                 | **양극단 주의** | 작업 구성             |
-| 규율          | 계측 채널 준수       | 편집과 bash 파일접근 중 계측 도구로 간 비율. `cat`·`awk`·인터프리터 읽기와 `sed -i`·heredoc 쓰기가 분자                               | 높을수록 좋음   | 도구 이름             |
-| 규율          | 게이트 재발 없음     | 차단된 호출 중 같은 에이전트가 이미 걸린 게이트에 다시 걸리지 않은 비율. 차단이 없으면 분모가 없어 판정하지 않는다                    | 높을수록 좋음   | 훅 설치               |
-| 컨텍스트 효율 | 읽기 범위 규율       | 200줄 넘는 파일 읽기 중 범위를 지정한 비율. 파일 전체를 덮는 지정은 인정하지 않는다                                                   | 높을수록 좋음   | 도구 이름             |
-| 컨텍스트 효율 | 읽은 것 기억하기     | 읽기 중 같은 파일을 다시 읽지 않은 비율. 편집 뒤 재확인은 정당하므로 뺀다                                                             | 높을수록 좋음   | 도구 이름             |
-| 컨텍스트 효율 | 응답 간결성          | 읽기·편집 호출 한 번당 생성한 출력 토큰. 1,000토큰 만점, 4,500토큰 0점                                                                | 높을수록 좋음   | 도구 이름 · 작업 구성 |
-| 컨텍스트 효율 | 컨텍스트 경량성      | 요청 한 번마다 실려 가는 캐시 컨텍스트. 100K 만점, 400K 0점                                                                           | 높을수록 좋음   | 도구 이름             |
-
-**분모에서 무엇을 빼는지가 정의의 절반입니다.** `Glob` 이 대신할 수 없는 `find -type d` 와 개수 집계, 읽을 것이 없는 새 파일, 편집 뒤의 정당한 재확인 — 이런 것을 분모에 두면 대안이 없는 일을 할 때마다 점수가 깎여 정직한 경로가 막힙니다.
-
-목표가 `100이 목표`인 것은 둘뿐입니다. 나머지는 100을 목표로 둘 근거가 없어서, 상한을 강제하면 오히려 나쁜 행동이 유리해집니다(빈 커밋으로 산출물 도달률 채우기, 통째로 읽어 재방문 없애기).
-
-## 설계에서 지킨 것
-
-**사실과 해석을 분리합니다.** DB에는 파싱 결과만 담고 축은 매번 다시 계산합니다. 정의가 자주 바뀌기 때문입니다.
-
-**판정 경계를 코드에 고정합니다.** 산문으로만 적었더니 같은 축을 재계산할 때마다 다른 값이 나왔습니다. 지금은 `definitions.ts`와 `bash.ts`가 단일 기준점이고 문서는 코드를 가리킵니다.
-
-**조작 저항을 지표 자신에게 적용합니다.** 축마다 "활동은 그대로인데 계산만 좋아지는" 경로를 등록하고, 그 경로로 점수가 얼마나 오르는지 잽니다. 테스트에 대한 mutation testing과 같은 형태입니다. 시나리오마다 무엇이 물리적으로 그대로인지(불변량), 어느 함수의 어느 조건이 뚫리는지(메커니즘)를 적습니다.
-
-**차단된 호출은 축에서 뺍니다.** 넣으면 게이트가 잘 작동할수록 점수가 나빠지는 역설이 생깁니다.
-
-**한계를 감추지 않습니다.** 화면 각주에 외부 근거가 없다는 사실과 무엇을 시도해 기각했는지가 나갑니다.
-
-## 알려진 한계
-
-**진단 도구지 성적표가 아닙니다.** 무엇에 쓸 수 있고 무엇에 못 쓰는지부터 봅니다.
-
-| 쓸 수 있는 것                                   | 예                                          |
-| ----------------------------------------------- | ------------------------------------------- |
-| 내 병목이 어디인지 찾기                         | `파일 찾기 규율 21` → `find` 를 `Glob` 으로 |
-| 같은 정의로 시기 비교하기                       | 초기 절반 대 최근 절반                      |
-| 하네스에 어떤 센서가 있고 문서와 어긋난 곳 찾기 | 설명 없이 막는 게이트 4종                   |
-
-| 쓸 수 없는 것             | 왜                                                  |
-| ------------------------- | --------------------------------------------------- |
-| "우리 팀 평균보다 잘한다" | 등급이 내 이력 대비라 남과 비교가 안 됩니다         |
-| "직전 구간보다 나아졌다"  | 이웃 구간 상관이 0이라 잡음과 개선이 구별 안 됩니다 |
-| "이 점수면 품질이 좋다"   | 점수와 품질을 잇는 외부 근거가 없습니다             |
-
-아래는 그 이유입니다.
-
-### 1. 맞춰볼 기준이 없다 — 표준 분동 없는 체중계
-
-이 도구는 "탐색력 53"을 냅니다. 그런데 **53이 좋은 건지 나쁜 건지 확인할 방법이 없습니다.** 53인 세션과 80인 세션 중 어느 쪽이 실제로 일을 잘했는지 대조할 정답표가 없어서입니다. 그래서 등급을 내 이력 대비로 매깁니다. "평소보다 나은가"에는 답하고 "잘하는 건가"에는 못 답합니다.
-
-정답표를 만들려고 두 번 시도해 두 번 기각했습니다. `validity.ts` 에 수치와 함께 남겼습니다.
-
-| 시도      | 방법                                                | 기각 사유                                                                                      |
-| --------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| 사람 라벨 | 세션마다 좋음·나쁨을 표시해 30건 모음               | 세션마다 사람이 필요해 확장이 안 되고, 남의 하네스를 평가하려면 그 사람의 라벨을 받아야 합니다 |
-| PR 결과   | GitHub 에 이미 있는 머지·리뷰 기록을 정답 대신 사용 | 신호에 변별력이 없고, 사전 가설과 반대로 나왔습니다                                            |
-
-PR 결과가 왜 안 되는지는 두 표로 갈립니다.
+### Bars and markers
 
 ```
-신호 변별력 (저장소 PR 509건)
-  머지 여부      453/509 머지 (89%)     거의 다 통과하는 시험은 등수를 못 매김
-  변경 요청      2/509                  아예 신호가 아님
-  리뷰 라운드    중앙값 2               쓸 만함
+Exploration   █████████████░░░░░░░░░░░  53  C   typical 46~58  best 67
+```
+
+- **The filled bar** is the current value, **typical** is p25~p75 of my own history, and **best** is my personal record.
+- **The grade** is an absolute score for all periods, and a percentile against my own history per period.
+- In HTML each component carries a `±` marker. It says how little that value moved across history, and larger is more trustworthy.
+
+The target is the **personal best** because there is no basis for an absolute threshold. A value hit once is a target the data proves this harness can reach.
+
+### Grading basis — can this be used on someone else's harness
+
+Each component comes with the type of its target and how comparable it is.
+
+| Target type            | Meaning                                                                                   |
+| ---------------------- | ----------------------------------------------------------------------------------------- |
+| `100 is the goal`      | Whatever is missing is a defect. Absolute comparison works                                |
+| `higher is better`     | There is no basis for setting 100 as the goal. Only rank comparison means anything        |
+| `beware both extremes` | Both ends can be bad, so this is not a maximization target. Left out of the overall score |
+
+| Contamination flag             | Meaning                                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------------------ |
+| `hook installs move the value` | Blocked calls drop out of the axis, so the more defenses you lay down the higher the score |
+| `tied to tool names`           | On a harness with different tool names, that activity drops out of the count entirely      |
+| `depends on task mix`          | It measures what got done that day, not the person                                         |
+
+**If a component carries even one contamination flag, it is not used to compare people.** Right now **all 14** components carry one. This tool cannot yet be used to compare against anyone else.
+
+The most common flag is `tied to tool names`. The capability layer resolves the name mapping and splits a missing capability out as no verdict, but that does not make the contamination go away. The anchor values (1,000/4,500 tokens, 100K/400K context) are fitted to the distribution of this corpus, so there is no basis for measuring another harness on the same scale.
+
+### Per-component definitions
+
+What is counted (numerator and denominator), where the target comes from, and what breaks comparison. `scouter guide` gives the same content in bottleneck order.
+
+| Stat               | Component                         | What is counted                                                                                                                                                                             | Target                   | Contamination              |
+| ------------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | -------------------------- |
+| Exploration        | File-finding discipline           | Share of file-path lookups that went through the `Glob` tool. `find … -name` is the rest of the denominator                                                                                 | 100 is the goal          | hook installs · tool names |
+| Exploration        | Content index first               | Share of content and relationship lookups that went through qmd or graphify. Counts both MCP and CLI; read and diagnostic calls (`qmd get`, `graphify stats`) are not searches and come out | higher is better         | hook installs · tool names |
+| Exploration        | Read before edit                  | Share of edits to existing code files where the file was read first. A newly created file has nothing to read and comes out of the denominator                                              | **100 is the goal**      | tool names                 |
+| Verification       | Pre-commit verification freshness | Share of code-touching commits where verification ran **after** the last edit                                                                                                               | higher is better         | task mix · tool names      |
+| Verification       | No verification spin              | Inverse of verifier calls that re-ran the same kind with no edit in between                                                                                                                 | higher is better         | task mix                   |
+| Completion         | Artifact reached                  | Share of code-touching sessions that got as far as a commit or a PR                                                                                                                         | higher is better         | task mix                   |
+| Completion         | No rework                         | Inverse of editing the same file again after skipping verification or a commit                                                                                                              | higher is better         | tool names                 |
+| Autonomy           | No human intervention             | Interventions per 100 assistant turns. Interrupts, queued input mid-run, and tool denials counted together                                                                                  | **beware both extremes** | task mix                   |
+| Discipline         | Instrumented channel use          | Share of edits and bash file access that went through instrumented tools. `cat`, `awk`, interpreter reads and `sed -i`, heredoc writes are the numerator                                    | higher is better         | tool names                 |
+| Discipline         | No gate repeats                   | Share of blocked calls where the same agent did not hit a gate it had already hit. With no blocks there is no denominator and no verdict                                                    | higher is better         | hook installs              |
+| Context efficiency | Read range discipline             | Share of reads of files over 200 lines that specified a range. A range covering the whole file does not count                                                                               | higher is better         | tool names                 |
+| Context efficiency | Remembering what was read         | Share of reads that did not read the same file again. Re-checking after an edit is legitimate and comes out                                                                                 | higher is better         | tool names                 |
+| Context efficiency | Response brevity                  | Output tokens generated per read or edit call. 1,000 tokens is full marks, 4,500 tokens is 0                                                                                                | higher is better         | tool names · task mix      |
+| Context efficiency | Context lightness                 | Cached context carried along on every request. 100K is full marks, 400K is 0                                                                                                                | higher is better         | tool names                 |
+
+**What comes out of the denominator is half the definition.** `find -type d` and counting, which `Glob` cannot stand in for; a new file with nothing to read; the legitimate re-check after an edit — leave those in the denominator and the score drops every time there is no alternative, which closes off the honest path.
+
+Only two components are `100 is the goal`. For the rest there is no basis for setting 100 as the target, and forcing a ceiling would make bad behavior pay off instead (padding the artifact rate with empty commits, reading files whole to remove revisits).
+
+## What the design holds to
+
+**Facts are kept apart from interpretation.** The DB holds parse results only, and the axes are recomputed every time, because definitions change often.
+
+**Decision boundaries are pinned in code.** When they lived in prose alone, recomputing the same axis gave a different value each time. Now `definitions.ts` and `bash.ts` are the single reference, and the documents point at the code.
+
+**Gaming resistance is applied to the metrics themselves.** Each axis registers the paths where "activity stays the same but the arithmetic gets better", and measures how far the score rises along them. It is the same shape as mutation testing for tests. Each scenario records what stays physically unchanged (the invariant) and which condition in which function gets through (the mechanism).
+
+**Blocked calls come out of the axes.** Leave them in and you get the paradox that the better the gates work, the worse the score.
+
+**Limitations are not hidden.** The footnotes on screen say there is no external evidence, and what was tried and rejected.
+
+## Known limitations
+
+**This is a diagnostic tool, not a report card.** Start with what it can and cannot be used for.
+
+| What it can do                                                              | Example                                              |
+| --------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Find where my bottleneck is                                                 | `File-finding discipline 21` → move `find` to `Glob` |
+| Compare stretches of time under the same definition                         | Early half against recent half                       |
+| See which sensors the harness has and where they diverge from the documents | 4 gates that block without explanation               |
+
+| What it cannot do                      | Why                                                                                         |
+| -------------------------------------- | ------------------------------------------------------------------------------------------- |
+| "We are above the team average"        | Grades are relative to my own history, so there is no comparing with anyone else            |
+| "Better than the previous period"      | Correlation between neighboring periods is 0, so noise and improvement cannot be told apart |
+| "This score means the quality is good" | There is no external evidence linking score to quality                                      |
+
+Here is why.
+
+### 1. No external ground truth — a scale with no calibration weights
+
+This tool reports "Exploration 53". But **there is no way to check whether 53 is good or bad**, because there is no answer key to say which session actually did better work, the one at 53 or the one at 80. So grades are set against my own history. It answers "better than usual" and cannot answer "is this good".
+
+Two attempts at an answer key, two rejections. Both are recorded with their numbers in `validity.ts`.
+
+| Attempt      | Method                                                               | Why it was rejected                                                                                            |
+| ------------ | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Human labels | Mark each session good or bad, 30 collected                          | Needs a person per session so it does not scale, and evaluating someone else's harness would need their labels |
+| PR outcomes  | Use the merge and review records already in GitHub as the answer key | The signal does not discriminate, and it came out opposite to the prior hypotheses                             |
+
+Why PR outcomes do not work comes apart into two tables.
+
+```
+Signal discrimination (509 PRs in the repo)
+  Merged             453/509 merged (89%)   a test almost everyone passes cannot rank anyone
+  Changes requested  2/509                  not a signal at all
+  Review rounds      median 2               usable
 ```
 
 ```
-사전 가설 대 실측 (데이터를 보기 전에 적어둔 것)
-  검증력 높으면 → 리뷰 라운드 적을 것     실측 +0.201   반대
-  탐색력 높으면 → 코멘트 적을 것          실측 +0.134   반대
-  나머지 1개                                            방향은 맞음
+Prior hypotheses against measurement (written down before looking at the data)
+  Higher verification → fewer review rounds   measured +0.201   opposite
+  Higher exploration  → fewer comments        measured +0.134   opposite
+  The remaining 1                                               direction held
 
-  가장 큰 상관   자율성 × 코멘트 수 0.286
-                 ← 인과 경로가 없다고 사전 선언해둔 축
+  Largest correlation   Autonomy × comment count 0.286
+                        ← the axis declared in advance to have no causal path
 ```
 
-관계없다고 못박은 축이 1등으로 나오면 그건 발견이 아니라 잡음입니다.
+When the axis nailed down as unrelated ranks 1st, that is not a finding, that is noise.
 
-### 2. 재현성 게이트 2/6 · 1/6 — 홀짝으로 나눠 채점하기
+### 2. Reproducibility gate 2/6 · 1/6 — scoring the odd and even halves
 
-한 구간에 세션이 14개쯤 있습니다. 이걸 무작위로 7개씩 두 묶음으로 갈라 따로 점수를 냅니다. **같은 구간이니 두 점수가 비슷해야 정상입니다**(시험지를 홀수 문항과 짝수 문항으로 나눠 채점해도 실력이 비슷하게 나오듯이).
+A period holds about 14 sessions. They are split at random into two groups of 7 and scored separately. **It is the same period, so the two scores should come out close** (the way scoring a test's odd questions and even questions separately still shows the same ability).
 
-6축 중 5축에서 안 비슷합니다. 그 구간 점수가 "이 시기에 잘했다"가 아니라 **"어떤 세션이 우연히 이 구간에 들어왔나"** 를 반영한다는 뜻입니다.
+On 5 of the 6 axes they are not close. That means the period score reflects **"which sessions happened to land in this period"** rather than "I did well in this stretch".
 
-| 화면      | 뒷받침하는 축 | 이유                                                 |
-| --------- | ------------- | ---------------------------------------------------- |
-| 전수 집계 | 2/6           | 모든 구간을 합치므로 구간 내 재현성이 필요 없습니다  |
-| 구간별    | 1/6           | 구간 안에서 점수가 재현돼야 하는데 5축이 못 미칩니다 |
+| Screen      | Axes that hold up | Why                                                                      |
+| ----------- | ----------------- | ------------------------------------------------------------------------ |
+| All periods | 2/6               | Every period is merged, so reproducibility within a period is not needed |
+| Per period  | 1/6               | Scores have to reproduce inside a period, and 5 axes fall short          |
 
-구간을 2·3·4배로 키워도 안 나아졌습니다. 원인이 "표본이 적어서"가 아니라 **세션마다 하는 일이 너무 달라서**로 보입니다. 리팩터링 세션과 버그 수정 세션과 문서 작업 세션을 한 통에 넣고 평균 내는 셈입니다.
+Growing the period 2x, 3x, and 4x did not help. The cause looks less like "too few samples" and more like **the work differing too much from session to session**. It amounts to putting a refactoring session, a bug-fix session, and a documentation session in one bucket and taking the average.
 
-분할을 하나만 보지 않고 **무작위 이분할 400개의 분포**를 봅니다. 구간에 세션이 14개면 가능한 이분할이 1,716가지인데, 그중 하나로 판정하면 운이 판정을 가릅니다.
+Instead of reading a single split, the tool reads **the distribution of 400 random two-way splits**. With 14 sessions in a period there are 1,716 possible splits, and picking one of them to decide by lets luck settle the verdict.
 
-실제로 그랬습니다. 인덱스 우선 탐색이 단일 분할에서 0.505로 통과했는데 **순열 중앙값은 0.264**입니다. 운 좋은 분할 하나였고, 그래서 구간별 화면 지원이 2/6에서 1/6로 내려갔습니다.
+That is what happened. Index-first search passed at 0.505 on a single split, but **the permutation median is 0.264**. It was one lucky split, and that is why support for the per-period screen dropped from 2/6 to 1/6.
 
-### 그 원인을 가르는 실험 — 작업 유형으로 층화하기
+### The experiment that separates the causes — stratify by work type
 
-"세션마다 하는 일이 너무 달라서"는 아직 짐작입니다. 후보가 둘이기 때문입니다. 축이 원래 불안정하거나, 반으로 가를 때 두 묶음의 작업 구성이 달라지거나.
+"Sessions do too many different things" is still a guess, because there are two candidates. Either the axis is unstable to begin with, or the two halves get a different work mix when the period is split.
 
-둘은 한 번의 대조로 갈립니다. **같은 순열 split-half를 층 안에서만 돌리면** 두 반쪽의 작업 구성이 같아지므로, 상관이 올라가면 원인은 구성이었고 그대로면 축 자체입니다. `scouter strata`가 그 대조를 합니다.
+One contrast tells them apart. **Run the same permuted split-half inside the strata only** and the two halves get the same work mix, so if the correlation rises the cause was the mix, and if it stays the cause is the axis itself. `scouter strata` runs that contrast.
 
-세션은 다섯 층으로 나눕니다. 조사 · 문서·설정 · 신규 구현 · 기존 수정 · 검증·운영. 사람이 붙이는 라벨이 아니라 이미 있는 사실 테이블에서 셉니다. 무엇을 고쳤는지(코드냐 아니냐), 새로 만들었는지 고쳤는지, 편집 없이 검증만 했는지입니다.
+Sessions fall into five strata: explore · docs · build · modify · verify. These are not human labels — they are counted from the fact tables that already exist: what was edited (code or not), whether the file was created or changed, and whether the session only verified without editing.
 
-| 결과                  | 뜻                                                | 다음                                       |
-| --------------------- | ------------------------------------------------- | ------------------------------------------ |
-| 올라감 (바닥 넘음)    | 구간 점수를 흔든 것은 반쪽마다 달라지는 작업 구성 | 고정 태스크 셋에 쓸 근거가 생깁니다        |
-| 그대로                | 원인이 작업 구성이 아님                           | 태스크 셋을 만들어도 이 축은 안 살아납니다 |
-| 올라감 (바닥 못 넘음) | 라벨이 아무 뜻이 없어도 나오는 크기의 이동        | 읽지 않습니다                              |
+| Result                   | Meaning                                                                  | Next                                            |
+| ------------------------ | ------------------------------------------------------------------------ | ----------------------------------------------- |
+| Rises above the floor    | What moved the period scores is the work mix that differs between halves | There is a reason to invest in a fixed task set |
+| Stays                    | The work mix is not the cause                                            | A task set will not revive this axis            |
+| Rises but stays under it | A shift that size also appears when the labels mean nothing              | Do not read it                                  |
 
-이동이 얼마나 커야 움직인 것인지는 이동 하나만 봐서는 알 수 없습니다. 그래서 **위약 층**을 함께 돌립니다. 층 크기는 그대로 두고 누가 어느 층이냐만 흩은 것이라, 분할이 받는 제약은 실제 층화와 같고 라벨만 뜻을 잃습니다. **뜻 없는 라벨로 잰 이동이 곧 잡음 바닥이고, 실제 이동이 그 바닥을 못 넘으면 증거가 아닙니다.**
+How far a shift has to move before it has moved is not readable from the shift alone. So a **placebo stratification** runs alongside: it keeps the stratum sizes and shuffles only which session sits in which stratum, so the split is constrained the same way while the labels lose their meaning. **A shift measured with meaningless labels is the noise floor, and a real shift that does not clear it is not evidence.**
 
-바닥은 생각보다 낮지 않습니다. 실제 이동이 바닥을 겨우 넘는 자리가 나오는데, 위약이 없으면 그 값을 "올랐다"로 읽게 됩니다.
+The floor is not as low as it looks. A real shift can land just barely above it, and without the placebo that number reads as "it rose".
 
-위약이 지우지 못하는 것이 하나 남습니다. 작업 유형이 분모 크기의 대리 변수라면 층화는 분모를 맞춘 것이고, 이동은 작업 유형이 아니라 분모가 만든 것일 수 있습니다. 프로브는 어느 쪽이든 둘 다 상수로 만들지만 무엇을 고정해야 하는지는 달라집니다.
+One thing the placebo cannot rule out: if work type is a proxy for denominator size, stratifying balanced the denominator, and the shift may be the denominator's rather than the work type's. A probe pins both either way, but what you pin differs.
 
-층 경계 두 개(새 파일 비중, 검증 하한)는 임의값입니다. 관측에서 꺾인 자리를 찾아 잡은 것이 아니라 어딘가는 끊어야 해서 잡았습니다. 그래서 변형을 함께 돌려 이동의 부호가 유지되는지 봅니다. **부호가 변형마다 갈리면 그 값은 층화가 아니라 임계가 만든 것이라 읽으면 안 됩니다.**
+The two stratum boundaries (create share, verify floor) are arbitrary values. They were not found at a bend in the observations; something had to be cut somewhere. So the variants are run together to see whether the sign of the shift holds. **If the sign flips across variants, the number came from the threshold rather than from stratification and must not be read.**
 
-**이 실험은 게이트 판정을 바꾸지 않습니다.** 분류기가 아직 검증되지 않은 임의 임계 위에 서 있어서, 이것으로 통과선을 옮기면 통과할 이유를 찾아 기준을 고친 것이 됩니다.
+**This experiment does not change the gate verdict.** The classifier still rests on arbitrary, unvalidated thresholds, and moving the pass line with it would be editing the standard to find a reason to pass.
 
-### 미달에 처방이 붙습니다
+### Shortfalls come with a prescription
 
-축이 전부 `분자/분모`라 관측된 흔들림을 **진짜 차이**와 **표본 잡음**으로 가를 수 있습니다.
+Every axis is a `numerator/denominator`, so the observed wobble can be separated into **real difference** and **sampling noise**.
 
 ```
-축                신호/잡음   신뢰도 0.5 에 필요한 분모   현재 예산
-계측 채널 준수        11.69                      3          20
-인덱스 우선 탐색       5.37                      4          10
-읽기 범위 규율         0.86                      6          10
-읽기 왕복 절제         0.62                     64          20
-검증 공회전 절제        0.40                     23          10
-검증 신선도           0.35                      7          10
+Axis                           Signal/noise   Denominator for 0.5 reliability   Current budget
+Instrumented channel use              11.69                                 3               20
+Index-first search                     5.37                                 4               10
+Read range discipline                  0.86                                 6               10
+Read round-trip restraint              0.62                                64               20
+Verification spin restraint            0.40                                23               10
+Verification freshness                 0.35                                 7               10
 ```
 
-**게이트를 통과한 축이 신호/잡음 상위 둘과 정확히 일치합니다.** 서로 다른 두 방법이 같은 답을 냈다는 뜻입니다.
+**The axes that pass the gate are exactly the top two by signal/noise.** Two different methods gave the same answer.
 
-그리고 미달이 처방으로 바뀝니다. `읽기 왕복 절제`는 신뢰도 0.5에 분모 64가 필요한데 예산이 20입니다. "재현이 안 된다"가 아니라 "예산이 세 배 모자라다"입니다.
+And a shortfall turns into a prescription. `Read round-trip restraint` needs a denominator of 64 for reliability 0.5, and the budget is 20. It is not "this does not reproduce", it is "the budget is three times too small".
 
-### 3. 구간 간 예측력 0 — 실력이 아니라 그날 컨디션
+### 3. Predictive power across periods is 0 — not skill, just the day's form
 
-이번 구간이 좋으면 다음 구간도 좋은 경향이 있어야 그것을 "실력"이라 부를 수 있습니다. 이웃 구간의 상관(lag-1)을 재보면 6축 중 5축이 0 근처입니다. 닫힌 구간 29개 기준입니다.
+For something to be called "skill", a good period should tend to be followed by another good one. Measuring the correlation between neighboring periods (lag-1), 5 of the 6 axes sit near 0. Based on 29 closed periods.
 
-| 축               |       1배 |    2배 |    3배 |    4배 |
-| ---------------- | --------: | -----: | -----: | -----: |
-| 읽기 범위 규율   |    -0.046 | -0.339 | -0.434 | -0.793 |
-| 읽기 왕복 절제   |     0.159 | -0.265 | -0.180 | -0.529 |
-| 검증 신선도      |     0.078 | -0.156 | -0.226 | -0.282 |
-| 검증 공회전 절제 |    -0.159 | -0.321 | -0.199 |  0.191 |
-| 계측 채널 준수   | **0.621** |  0.049 | -0.127 | -0.127 |
-| 인덱스 우선 탐색 |    -0.082 |  0.147 | -0.211 | -0.368 |
+| Axis                        |        1x |     2x |     3x |     4x |
+| --------------------------- | --------: | -----: | -----: | -----: |
+| Read range discipline       |    -0.046 | -0.339 | -0.434 | -0.793 |
+| Read round-trip restraint   |     0.159 | -0.265 | -0.180 | -0.529 |
+| Verification freshness      |     0.078 | -0.156 | -0.226 | -0.282 |
+| Verification spin restraint |    -0.159 | -0.321 | -0.199 |  0.191 |
+| Instrumented channel use    | **0.621** |  0.049 | -0.127 | -0.127 |
+| Index-first search          |    -0.082 |  0.147 | -0.211 | -0.368 |
 
-**표본이 적어서 그런 것이라면 구간을 묶을수록 올라가야 하는데, 반대로 내려갑니다.** 읽기 범위 규율은 4배로 묶으면 -0.793까지 갑니다. 어떤 집계 단위에서도 이웃 구간이 서로를 예측하지 않는다는 뜻이라, 고쳐서 통과시킬 수 있는 항목이 아닙니다.
+**If this were a sample-size problem, merging periods should push the numbers up, but they go the other way.** Read range discipline reaches -0.793 when merged 4x. That means neighboring periods do not predict each other at any aggregation size, so it is not an item that can be fixed into passing.
 
-계측 채널 준수만 1배에서 0.621로 높은데, **2배로 묶는 순간 0.049로 무너집니다.** 실력이 이어지는 것이라면 묶어도 남아야 합니다. 이건 비슷한 작업을 연달아 한 배치의 규칙성이 상관으로 잡힌 것으로 봅니다.
+Instrumented channel use is the one high value, 0.621 at 1x, and **it collapses to 0.049 the moment periods are merged 2x**. If skill carried over, it would survive merging. This looks like the regularity of a batch of similar work done back to back, picked up as correlation.
 
-그래서 **"직전 구간보다 3점 올랐습니다" 같은 표시를 안 합니다.** 그 3점이 개선인지 잡음인지 구별이 안 되기 때문입니다. 대신 초기 절반 대 최근 절반처럼 크게 묶어서만 비교합니다.
+So **there is no "up 3 points from the previous period" display.** Those 3 points cannot be told apart from noise. Comparison happens only in large blocks, such as the early half against the recent half.
 
-### 4. Claude Code 스키마 종속
+### 4. Tied to the Claude Code schema
 
-지표가 **도구 이름으로 정의**돼 있습니다. "`Glob` 을 썼나", "`Read` 로 읽었나" 하는 식입니다. 그래서 도구 이름이 다른 하네스에 그대로 가져가면, 그 하네스가 나빠서가 아니라 **이 도구가 못 알아봐서** 점수가 0으로 나옵니다.
+The metrics are **defined by tool name**: "did it use `Glob`", "did it read with `Read`". Carry them as they are to a harness with different tool names and the score comes out 0, not because that harness is bad but because **this tool does not recognize it**.
 
-실제로 이 저장소 안에서도 같은 함정에 한 번 빠졌습니다. graphify 를 MCP 도구 이름으로만 세다가 **CLI 호출 1,220건을 4건으로** 봤습니다. 실사용량의 300분의 1입니다.
+This repository fell into the same trap once. Counting graphify by its MCP tool name only, **1,220 CLI calls were seen as 4**. 1/300 of actual use.
 
-## 개발
+## Development
 
 ```bash
 npm run build       # tsc --build
@@ -543,10 +543,10 @@ npm test            # vitest run
 npm run typecheck
 ```
 
-테스트 152건입니다. 정의를 고칠 때는 회귀 테스트를 함께 고치세요 — 값이 바뀌는 종류라 정적 검사로는 안 잡힙니다.
+152 tests. When you change a definition, change the regression tests with it — the values move, and static checks will not catch that.
 
 ```
-packages/core   파서·추출·사실 테이블·지표·구간·능력치·게이트·뷰
-packages/cli    scouter 명령
-packages/ext    VSCode 확장 (상태바·패널)
+packages/core   parser · extract · fact tables · metrics · periods · stats · gate · views
+packages/cli    scouter commands
+packages/ext    VSCode extension (status bar · panel)
 ```

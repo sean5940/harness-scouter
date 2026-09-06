@@ -28,7 +28,13 @@ if (!existsSync(CLI)) {
   process.exit(1);
 }
 
-const readme = readFileSync(join(ROOT, "README.md"), "utf8");
+// 원문은 한국어본이다. 접미사 없는 README.md 는 GitHub 첫 화면에 나오는 영어본이라
+// 번역본 쪽에 넣는다. 아래 검사들이 한국어 문장·`--lang ko` 출력을 대조하므로
+// 원문 파일이 바뀌면 여기 상수만 바꾸면 된다.
+const SOURCE = "README.ko.md";
+const TRANSLATIONS = ["README.md", "README.ja.md"];
+
+const readme = readFileSync(join(ROOT, SOURCE), "utf8");
 
 /** 문서의 수치 토큰. 천단위 쉼표는 숫자 사이에 있을 때만 붙인다. */
 function numbers(text) {
@@ -46,7 +52,7 @@ console.log("문서 대조\n");
 //    손으로 옮기면 정의를 고칠 때마다 어긋난다.
 const sample = readme.match(/```\n(  HARNESS SCOUTER[\s\S]*?)```/);
 if (sample === null) {
-  check(false, "예시 화면을 README 에서 못 찾음");
+  check(false, `예시 화면을 ${SOURCE} 에서 못 찾음`);
 } else {
   const actual = execFileSync(
     process.execPath,
@@ -103,7 +109,7 @@ check(missing.length === 0, "능력 표가 프로필을 다 덮는다", missing.
 // 4. 커버리지 수치가 실제와 맞는가.
 const covLine = readme.match(/능력에 매핑됨\s+([\d,]+)\s+([\d.]+)%/);
 if (covLine === null) {
-  check(false, "커버리지 수치를 README 에서 못 찾음");
+  check(false, `커버리지 수치를 ${SOURCE} 에서 못 찾음`);
 } else {
   const { DatabaseSync } = await import("node:sqlite");
   const dbPath = join(
@@ -130,16 +136,12 @@ if (covLine === null) {
 
 // 5. 번역본이 원문의 수치를 그대로 갖고 있는가.
 const src = numbers(readme);
-for (const lang of ["en", "ja"]) {
-  const path = join(ROOT, `README.${lang}.md`);
+for (const name of TRANSLATIONS) {
+  const path = join(ROOT, name);
   if (!existsSync(path)) continue;
   const t = numbers(readFileSync(path, "utf8"));
   const miss = [...src].filter(([k, n]) => (t.get(k) ?? 0) < n).map(([k]) => k);
-  check(
-    miss.length === 0,
-    `README.${lang}.md 수치 보존`,
-    miss.slice(0, 6).join(" "),
-  );
+  check(miss.length === 0, `${name} 수치 보존`, miss.slice(0, 6).join(" "));
 }
 
 // 6. 번역본의 절 구조가 원문과 같은가.
@@ -148,15 +150,11 @@ for (const lang of ["en", "ja"]) {
 //    자리만 틀렸기 때문이다. 실제로 그렇게 한 번 어긋났다.
 const headingCount = (text) => (text.match(/^#{2,3} /gm) ?? []).length;
 const srcHeadings = headingCount(readme);
-for (const lang of ["en", "ja"]) {
-  const path = join(ROOT, `README.${lang}.md`);
+for (const name of TRANSLATIONS) {
+  const path = join(ROOT, name);
   if (!existsSync(path)) continue;
   const n = headingCount(readFileSync(path, "utf8"));
-  check(
-    n === srcHeadings,
-    `README.${lang}.md 절 개수`,
-    `${n} 대 ${srcHeadings}`,
-  );
+  check(n === srcHeadings, `${name} 절 개수`, `${n} 대 ${srcHeadings}`);
 }
 
 // 7. availableCapabilities 가 Claude Code 에서 축을 다 재는가.
