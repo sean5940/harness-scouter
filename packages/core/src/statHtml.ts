@@ -119,6 +119,8 @@ body{margin:0;padding:32px 20px 64px;background:var(--bg);color:var(--text);
 .part .n{opacity:.65;margin-left:2px}
 .part .rel{margin-left:5px;padding-left:5px;border-left:1px solid var(--line);opacity:.8}
 
+.withheld ul{margin:8px 0 0;padding-left:18px;font-size:12px;color:var(--dim)}
+.withheld p{font-size:12px;margin:6px 0 0}
 .guide{display:flex;flex-direction:column;gap:10px}
 .guide h2{font-size:11px;letter-spacing:.18em;color:var(--dim);margin:0;
   font-weight:600;text-transform:uppercase}
@@ -495,6 +497,27 @@ export function renderStatHtml(
   const coverage =
     window.coverage === null ? "—" : `${(window.coverage * 100).toFixed(0)}%`;
 
+  // 프로필이 호출을 못 알아본 창은 점수를 안 낸다. 터미널이 보류한 것을 여기서
+  // 그대로 내면 두 화면이 서로 다른 말을 한다.
+  const withheld = window.scoreWithheld !== null;
+  const unmapped = withheld
+    ? `<div class="withheld guide"><h2>${t(
+        L("점수를 내지 않습니다", "No score"),
+        lang,
+      )}</h2><p>${t(
+        L(
+          `프로필이 이 창의 도구 호출 중 ${((window.capabilityCoverage ?? 0) * 100).toFixed(0)}% 만 알아봤습니다. 이 화면은 하네스가 아니라 프로필의 빈칸을 보여주게 됩니다.`,
+          `The profile recognized only ${((window.capabilityCoverage ?? 0) * 100).toFixed(0)}% of the tool calls in this window. This screen would show the gaps in the profile, not the harness.`,
+        ),
+        lang,
+      )}</p><ul>${window.unmappedTop
+        .map(
+          (u) =>
+            `<li><code>${escapeHtml(u.name)}</code> <span class="num">${u.count.toLocaleString()}</span></li>`,
+        )
+        .join("")}</ul></div>`
+    : "";
+
   const rankBasis =
     options.allTime === true
       ? t(
@@ -517,8 +540,8 @@ export function renderStatHtml(
 <body><div class="wrap">
 <div class="readout">
   <span class="brand">Harness Scouter</span>
-  <span class="lv"><small>LEVEL</small>${window.level}</span>
-  <span class="gradeChip" style="color:${gray ? "var(--dim)" : rankFill(window.overallRank)}">${window.overallRank}</span>
+  <span class="lv"><small>LEVEL</small>${withheld ? "—" : window.level}</span>
+  <span class="gradeChip" style="color:${gray ? "var(--dim)" : rankFill(window.overallRank)}">${withheld ? "—" : window.overallRank}</span>
   <span class="scope">${scope} · ${t(
     L(`세션 ${window.sessionCount}개`, `${window.sessionCount} sessions`),
     lang,
@@ -530,6 +553,7 @@ export function renderStatHtml(
         : ""
     }</span>
 </div>
+${unmapped}
 <div class="chart">${renderRadarSvg(window.stats, lang, { grayedOut: gray })}</div>
 <div class="stats">${window.stats.map((stat) => renderStat(stat, gray, lang)).join("\n")}</div>
 ${renderRubric(window.stats, lang)}

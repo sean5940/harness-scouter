@@ -43,6 +43,8 @@ function grepOnlyPeriod(index: number): Period {
     usage: emptyUsage(),
     delivery: { num: 0, den: 0 },
     coverage: { observable: 100, offChannel: 0, opaque: 0 },
+    // 매핑은 다 됐다. 이 파일이 묻는 것은 "이름을 아는가" 가 아니라 "능력이 있는가" 다.
+    capability: { total: 300, mapped: 300, unmapped: {} },
     open: false,
   } as Period;
 }
@@ -81,14 +83,16 @@ describe("능력 선언을 밖에서 받는다", () => {
 describe("없는 능력은 0 이 아니라 판정 불가다", () => {
   it("인덱스 검색이 있는 하네스에서는 0 점이다", () => {
     // 원인이 있는 세계. 도구가 있는데 안 썼으니 0 점이 맞다.
-    expect(retrievalScore(new Set(["index-search", "file-read"]))).toBe(0);
+    expect(
+      retrievalScore(new Set<Capability>(["index-search", "file-read"])),
+    ).toBe(0);
   });
 
   it("인덱스 검색이 없는 하네스에서는 값을 내지 않는다", () => {
     // 원인이 없는 세계. 같은 코퍼스인데 도구가 없으니 물을 수 없는 질문이다.
-    expect(retrievalScore(new Set(["file-read", "file-edit", "shell"]))).toBe(
-      null,
-    );
+    expect(
+      retrievalScore(new Set<Capability>(["file-read", "file-edit", "shell"])),
+    ).toBe(null);
   });
 
   it("선언이 없으면 지금까지처럼 프로필에서 추론한다", () => {
@@ -103,12 +107,12 @@ describe("없는 능력은 0 이 아니라 판정 불가다", () => {
     const withIndex = buildStatWindow(
       grepOnlyPeriod(9),
       [0, 1, 2, 3, 4].map(grepOnlyPeriod),
-      { available: new Set(["index-search", "file-read"]) },
+      { available: new Set<Capability>(["index-search", "file-read"]) },
     ).stats.find((s) => s.key === "retrieval");
     const withoutIndex = buildStatWindow(
       grepOnlyPeriod(9),
       [0, 1, 2, 3, 4].map(grepOnlyPeriod),
-      { available: new Set(["file-read", "file-edit", "shell"]) },
+      { available: new Set<Capability>(["file-read", "file-edit", "shell"]) },
     ).stats.find((s) => s.key === "retrieval");
 
     expect(withIndex?.score).not.toBeNull();

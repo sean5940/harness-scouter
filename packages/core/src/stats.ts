@@ -1,9 +1,11 @@
 import {
+  addCapability,
   addCounts,
   addExtras,
   axisScore,
   coverageRatio,
   emptyAxes,
+  emptyCapability,
   emptyExtras,
   type AxisCount,
   type CoverageCount,
@@ -15,6 +17,7 @@ import {
   availableCapabilities,
   axisMeasurable,
   CLAUDE_CODE_PROFILE,
+  MIN_COVERAGE_TO_SCORE,
   type Capability,
 } from "./capability.js";
 
@@ -451,6 +454,22 @@ export interface StatWindow {
   sessionCount: number;
   coverage: number | null;
   judgeable: boolean;
+  /**
+   * 프로필이 이 창의 도구 호출을 얼마나 덮었는가. 위의 `coverage` 와 다른 값이다.
+   *
+   * 저것은 계측 채널로 본 호출의 비율이고 이것은 본 호출 중 능력에 매핑된 비율이다.
+   * 매핑표가 낡으면 저것은 그대로인데 이것만 떨어진다. 낡았을 때 소리가 나는 자리다.
+   */
+  capabilityCoverage: number | null;
+  /** 무엇이 안 잡혔는지. 점수를 못 낼 때 점수 대신 보여준다. */
+  unmappedTop: Array<{ name: string; count: number }>;
+  /**
+   * 점수를 낼 수 있는가. 못 내면 그 이유가 무엇인가.
+   *
+   * `null` 이면 낼 수 있다. `"capability"` 면 매핑 커버리지가 바닥 아래라 이 화면이
+   * 하네스가 아니라 프로필의 빈칸을 보여주게 된다. 그때는 점수 대신 안 잡힌 것을 낸다.
+   */
+  scoreWithheld: "capability" | null;
   stats: StatEntry[];
   overall: number | null;
   overallRank: Rank;
@@ -628,6 +647,30 @@ export function buildStatWindow(
 
   const coverage = coverageRatio(current.coverage);
 
+  /**
+   * 매핑표가 낡았을 때 소리가 나게 한다.
+   *
+   * README 가 약속한 규칙인데 실행 경로에 없었다. `MIN_COVERAGE_TO_SCORE` 와
+   * `measureCoverage()` 는 테스트와 문서 점검 스크립트만 부르고 있었고, 세션마다 세던
+   * 매핑 카운터는 구간으로 올라오는 길이 없어 아무도 읽지 못했다. 그래서 커버리지 77%
+   * 짜리 코퍼스에서 점수가 그대로 나왔다.
+   *
+   * 열에 하나를 넘는 호출을 모르면 그 화면은 하네스가 아니라 프로필의 빈칸을 보여주는
+   * 것이다. 그때 점수를 내면 남의 하네스가 나빠서 낮은 것처럼 읽힌다.
+   */
+  const capabilityCoverage =
+    current.capability.total === 0
+      ? null
+      : current.capability.mapped / current.capability.total;
+  const unmappedTop = Object.entries(current.capability.unmapped)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+  const scoreWithheld =
+    capabilityCoverage !== null && capabilityCoverage < MIN_COVERAGE_TO_SCORE
+      ? "capability"
+      : null;
+
   // 종합도 개별 스탯과 같은 기준을 써야 한다. 종합만 절대 임계면 각주가 거짓이 되고,
   // 종합 범위가 74~84로 눌려 있어 A와 B 두 값밖에 안 나온다.
   const overallHistory = historyStats
@@ -654,7 +697,12 @@ export function buildStatWindow(
     endedAt: current.endedAt,
     sessionCount: current.sessionIds.length,
     coverage,
-    judgeable: coverage === null || coverage >= COVERAGE_FLOOR,
+    judgeable:
+      (coverage === null || coverage >= COVERAGE_FLOOR) &&
+      scoreWithheld === null,
+    capabilityCoverage,
+    unmappedTop,
+    scoreWithheld,
     stats,
     overall,
     overallRank,
@@ -749,6 +797,7 @@ export function mergePeriods(periods: Period[]): Period | null {
   const usage = emptyUsage();
   const delivery = { num: 0, den: 0 };
   const coverage: CoverageCount = { observable: 0, offChannel: 0, opaque: 0 };
+  let capability = emptyCapability();
   const sessionIds: string[] = [];
 
   for (const p of closed) {
@@ -767,6 +816,7 @@ export function mergePeriods(periods: Period[]): Period | null {
     coverage.observable += p.coverage.observable;
     coverage.offChannel += p.coverage.offChannel;
     coverage.opaque += p.coverage.opaque;
+    capability = addCapability(capability, p.capability);
     sessionIds.push(...p.sessionIds);
   }
 
@@ -781,6 +831,7 @@ export function mergePeriods(periods: Period[]): Period | null {
     usage,
     delivery,
     coverage,
+    capability,
     closedByBudget: true,
     unfilledAxes: [],
     open: false,
