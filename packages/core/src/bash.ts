@@ -246,11 +246,27 @@ function meaningfulTokens(segment: string): string[] {
   return tokens.slice(i);
 }
 
+/**
+ * 검증의 종류. 도구 이름이 아니라 하는 일로 적는다.
+ *
+ * 이름으로 적으면 이 목록이 곧 JS 생태계 목록이 된다. `tsc`·`eslint` 를 종류로 쓰면
+ * `go vet` 을 어디에 넣을지가 억지가 되고, 진단 화면의 "tsc 재실행" 은 Go 하네스에서
+ * 읽을 수 없는 말이 된다. 종류는 공회전 판정의 묶음 키이자 화면에 그대로 나가는 말이라
+ * 언어에 매이면 안 된다.
+ *
+ * 묶음은 1대1 로 바꾼다. 같은 것끼리 그대로 묶이므로 점수는 안 움직인다.
+ */
+const KIND_TYPECHECK = "typecheck";
+const KIND_LINT = "lint";
+const KIND_FORMAT = "format";
+const KIND_TEST = "test";
+const KIND_BUILD = "build";
+
 const VERIFIER_BINARIES: ReadonlyArray<readonly [string, RegExp]> = [
-  ["tsc", /^tsc$/],
-  ["eslint", /^eslint$/],
-  ["prettier", /^prettier$/],
-  ["test", /^(jest|vitest|pytest|mocha)$/],
+  [KIND_TYPECHECK, /^tsc$/],
+  [KIND_LINT, /^eslint$/],
+  [KIND_FORMAT, /^prettier$/],
+  [KIND_TEST, /^(jest|vitest|pytest|mocha)$/],
 ];
 
 /**
@@ -260,11 +276,11 @@ const VERIFIER_BINARIES: ReadonlyArray<readonly [string, RegExp]> = [
  * `npm run typecheck`를 쓰는 레포는 검증을 아예 안 한 것으로 잡혀 비교가 성립하지 않는다.
  */
 const SCRIPT_KINDS: ReadonlyArray<readonly [string, RegExp]> = [
-  ["tsc", /^(typecheck|type-check|tsc|types?)$/],
-  ["eslint", /^(lint|eslint|lint:fix)$/],
-  ["prettier", /^(format|format:check|fmt|prettier)$/],
-  ["test", /^(test|tests|test:unit|jest|vitest)$/],
-  ["build", /^(build|compile)$/],
+  [KIND_TYPECHECK, /^(typecheck|type-check|tsc|types?)$/],
+  [KIND_LINT, /^(lint|eslint|lint:fix)$/],
+  [KIND_FORMAT, /^(format|format:check|fmt|prettier)$/],
+  [KIND_TEST, /^(test|tests|test:unit|jest|vitest)$/],
+  [KIND_BUILD, /^(build|compile)$/],
 ];
 
 /**
@@ -307,7 +323,7 @@ function verifierKindsOf(tokens: string[]): string[] {
   if (/^(tsx|ts-node|node)$/.test(bare)) {
     const target = tokens[i + 1];
     if (target !== undefined && /lint|typecheck|verify/.test(target))
-      kinds.add("eslint");
+      kinds.add(KIND_LINT);
   }
 
   return [...kinds];

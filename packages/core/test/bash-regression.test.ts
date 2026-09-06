@@ -28,7 +28,7 @@ describe("여러 줄 명령의 둘째 줄부터도 판정한다", () => {
   it("개행으로 이은 검증을 잡는다", () => {
     // 전체 명령의 30%가 여러 줄이고, 개행으로 잇기만 해도 축이 오르는 조작 레버였다.
     const k = classifyBash("cd /repo\nnpx tsc --noEmit");
-    expect(k.verifierKinds).toContain("tsc");
+    expect(k.verifierKinds).toContain("typecheck");
   });
 
   it("개행 뒤의 재귀 검색을 잡는다", () => {
@@ -65,9 +65,9 @@ describe("find 술어", () => {
 
 describe("npm 래퍼 스크립트", () => {
   it.each([
-    ["npm run typecheck", "tsc"],
-    ["npm run lint", "eslint"],
-    ["yarn format:check", "prettier"],
+    ["npm run typecheck", "typecheck"],
+    ["npm run lint", "lint"],
+    ["yarn format:check", "format"],
     ["pnpm run test:unit", "test"],
   ])("%s → %s", (command, kind) => {
     expect(classifyBash(command).verifierKinds).toContain(kind);
