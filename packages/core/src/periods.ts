@@ -110,6 +110,28 @@ function unfilled(axes: AxisCounts, fillable: AxisKey[]): AxisKey[] {
 }
 
 /**
+ * 이 구간으로 비교할 수 있는 축이 하나라도 있는가.
+ *
+ * 세션 상한은 구간이 영원히 안 닫히는 것을 막으려고 둔 것인데, 상한을 세션 **수**로만
+ * 잡으면 세션 크기가 코퍼스마다 달라 구간의 실질 크기가 벌어진다. 그래프 노드를 세션
+ * 하나로 도는 하네스에서는 세션당 도구호출 중앙값이 10 이라, 40개를 묶어도 구간이
+ * 턴 62개다. 같은 코퍼스의 다른 구간은 9,602 턴이었고 편차가 155배까지 났다.
+ *
+ * 축이 하나도 예산에 안 닿은 구간은 모든 축이 회색이다. 무엇과도 비교할 수 없는 점을
+ * 하나 만들어 놓고 split-half 에 같은 무게로 넣으면 재현성이 안 나오는 게 당연하다.
+ * 그런 구간은 상한에 걸려도 닫지 않고 더 모은다.
+ *
+ * 새 임계를 만들지 않았다. "비교할 수 있다" 의 기준은 `PERIOD_BUDGET` 이 축마다 이미
+ * 정해 둔 최소 분모 그대로다. 예산을 다 채우면 닫고(budgetMet), 하나도 못 채웠으면
+ * 안 닫는다. 그 사이가 상한이 하던 일이다.
+ *
+ * 세션이 떨어지면 마지막 flush 가 열린 구간으로 내보내므로 무한히 모이지 않는다.
+ */
+function comparable(axes: AxisCounts, fillable: AxisKey[]): boolean {
+  return fillable.some((key) => axes[key].den >= PERIOD_BUDGET[key]);
+}
+
+/**
  * 세션을 시간순으로 쌓다가 6축 전부가 최소 분모를 채우는 지점에서 끊는다 (설계 3.4).
  *
  * 시간으로 묶지 않는 이유는 코퍼스가 5주치뿐이라 주 단위로는 6구간밖에 안 나오기
@@ -189,7 +211,8 @@ export function segmentIntoPeriods(sessions: SessionForPeriod[]): Period[] {
       unfilled(axes, fillable).length === 0 &&
       members.length >= PERIOD_MIN_SESSIONS;
     if (budgetMet) flush(true, false);
-    else if (members.length >= PERIOD_SESSION_CAP) flush(false, false);
+    else if (members.length >= PERIOD_SESSION_CAP && comparable(axes, fillable))
+      flush(false, false);
   }
 
   if (members.length > 0) flush(false, true);
@@ -228,6 +251,41 @@ function median(values: number[]): number | null {
  * 백분위를 쓰지 않는 이유는 구간이 24개뿐이고 층화하면 층당 한 자릿수가 되기 때문이다.
  * 직전 1구간만 보면 구간 크기 편차(2~28세션) 때문에 튀므로 중앙값을 쓴다.
  */
+export interface PeriodSizeSpread {
+  min: number;
+  median: number;
+  max: number;
+  /** 최대/최소. 구간을 같은 무게로 비교할 수 있는지를 이 값 하나로 본다. */
+  ratio: number | null;
+}
+
+/**
+ * 닫힌 구간들의 크기가 얼마나 벌어져 있는가. 크기는 턴 수로 센다.
+ *
+ * 이것을 안 보여주면 재현성 게이트의 실패가 하네스 탓으로 읽힌다. 크기가 155배 다른
+ * 점들을 같은 무게로 놓고 split-half 를 물으면 재현성이 안 나오는 것이 당연한데,
+ * 화면에는 "0/6 축" 만 있고 왜 그런지는 없다.
+ *
+ * 임계를 걸지 않고 값만 낸다. 얼마부터가 큰지는 코퍼스마다 다르고, 근거 없는 임계를
+ * 하나 더 만드느니 숫자를 그대로 보여주는 편이 낫다.
+ */
+export function periodSizeSpread(periods: Period[]): PeriodSizeSpread | null {
+  const sizes = periods
+    .filter((p) => !p.open)
+    .map((p) => p.extras.assistantTurns)
+    .filter((n) => n > 0);
+  if (sizes.length === 0) return null;
+  const min = Math.min(...sizes);
+  const max = Math.max(...sizes);
+  return {
+    min,
+    // 턴은 셈이라 소수점이 안 나온다. 짝수 개일 때 중앙값이 .5 로 나오는 것만 접는다.
+    median: Math.round(median(sizes) ?? min),
+    max,
+    ratio: min === 0 ? null : max / min,
+  };
+}
+
 export function reportPeriod(
   periods: Period[],
   index: number,
