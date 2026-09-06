@@ -25,15 +25,19 @@ describe("아무것도 검증하지 않는 호출은 검증이 아니다", () =>
   });
 
   it("진짜 검증은 그대로 검증이다", () => {
-    expect(classifyBash("npx tsc --noEmit").verifierKinds).toContain("tsc");
-    expect(classifyBash("npx eslint app/").verifierKinds).toContain("eslint");
-    expect(classifyBash("npm run typecheck").verifierKinds).toContain("tsc");
+    expect(classifyBash("npx tsc --noEmit").verifierKinds).toContain(
+      "typecheck",
+    );
+    expect(classifyBash("npx eslint app/").verifierKinds).toContain("lint");
+    expect(classifyBash("npm run typecheck").verifierKinds).toContain(
+      "typecheck",
+    );
     expect(classifyBash("npx vitest run").verifierKinds).toContain("test");
   });
 
   it("인자 없는 호출은 검증으로 남긴다", () => {
     // `npx tsc` 단독은 프로젝트 설정으로 실제 컴파일을 돈다.
-    expect(classifyBash("npx tsc").verifierKinds).toContain("tsc");
+    expect(classifyBash("npx tsc").verifierKinds).toContain("typecheck");
   });
 
   it("버전 조회를 커밋에 접합해도 검증이 붙지 않는다", () => {

@@ -72,17 +72,17 @@ describe("껍데기와 묶기로 판정이 사라지던 경로", () => {
   });
 
   it("같은 종류를 && 로 묶어도 실행 횟수대로 센다", () => {
-    // Set 이면 [tsc] 하나로 접혀 공회전이 안 보였다.
+    // Set 이면 [typecheck] 하나로 접혀 공회전이 안 보였다.
     expect(
       classifyBash("npx tsc --noEmit && npx tsc --noEmit && npx tsc --noEmit")
         .verifierKinds,
-    ).toEqual(["tsc", "tsc", "tsc"]);
+    ).toEqual(["typecheck", "typecheck", "typecheck"]);
   });
 
   it("다른 종류를 묶는 것은 정상이라 각각 한 번이다", () => {
     expect(classifyBash("npx tsc && npx eslint .").verifierKinds).toEqual([
-      "tsc",
-      "eslint",
+      "typecheck",
+      "lint",
     ]);
   });
 });

@@ -20,7 +20,7 @@ describe("검증이 커밋보다 앞섰는지 구분한다", () => {
   it("커밋 뒤 검증은 앞선 것이 아니다", () => {
     const c = classifyBash("git commit -m x && npx tsc --noEmit");
     expect(c.isCommit).toBe(true);
-    expect(c.verifierKinds).toContain("tsc");
+    expect(c.verifierKinds).toContain("typecheck");
     expect(c.hasVerifierBeforeCommit).toBe(false);
   });
 
