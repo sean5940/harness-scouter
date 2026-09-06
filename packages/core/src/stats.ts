@@ -11,6 +11,7 @@ import {
   type CoverageCount,
 } from "./metrics.js";
 import { emptyEvents, emptyUsage, type Period } from "./periods.js";
+import { PERIOD_BUDGET } from "./definitions.js";
 import { COMPONENT_CRITERIA } from "./growth.js";
 import { L, type Localized } from "./i18n.js";
 import {
@@ -183,13 +184,49 @@ export const STAT_QUESTIONS: Record<StatKey, Localized> = {
 const AUTONOMY_CAP_PER_100_TURNS = 6;
 
 /**
- * 완수력의 산출물 도달에 필요한 최소 세션 수.
+ * 구성요소가 값을 내려면 분모가 이만큼은 돼야 한다.
  *
- * 구간당 분모가 2~11이라 세션 하나가 커밋 없이 끝나면 스탯이 최대 25p 흔들린다.
- * 같은 스탯의 다른 구성요소(재작업)는 편집 호출 단위라 분모가 34배 크다.
- * 분모가 얇으면 값을 내지 않는다. meanOf가 null을 빼므로 재작업 단독으로 계산된다.
+ * `axisScore()` 는 `den === 0` 만 막고 `meanOf` 는 가중치 없이 평균한다. 그래서 이런
+ * 화면이 나온다.
+ *
+ * ```
+ * 커밋 전 검증 신선도    0   n=477
+ * 검증 공회전 없음     100   n=  3     ← 같은 가중치
+ * ```
+ *
+ * 검증력 50 은 477건에서 나온 0 과 3건에서 나온 100 을 반씩 섞은 값이다. 3건짜리
+ * 100 은 관측이 아니라 잡음인데, 화면에서는 477건짜리와 구별이 안 된다.
+ *
+ * 분모로 가중하지는 않는다. 구성요소마다 분모의 단위가 다르다 — 호출·세션·요청이
+ * 섞여 있어서, 분모로 무게를 주면 중요도가 아니라 단위 선택이 점수를 정한다.
+ * 얇은 것은 섞지 않고 뺀다. `meanOf` 가 null 을 빼므로 남은 것만으로 계산되고,
+ * 몇 개로 냈는지는 화면에 이미 나간다.
+ *
+ * 값은 새로 만들지 않았다. 축은 `PERIOD_BUDGET` 이 이미 정해 둔 하한을 그대로 쓰고,
+ * 축이 아닌 구성요소는 그중 가장 작은 값에 맞춘다. 축에 대해 정한 하한을 축이 아닌
+ * 자리에만 더 느슨하게 둘 이유가 없다.
+ *
+ * 산출물 도달만 단위가 세션이라 따로 적는다. 구간당 분모가 2~11이라 세션 하나가
+ * 커밋 없이 끝나면 스탯이 최대 25p 흔들린다.
  */
-const MIN_DELIVERY_SESSIONS = 8;
+const MIN_NON_AXIS_DEN = Math.min(...Object.values(PERIOD_BUDGET));
+
+const MIN_COMPONENT_DEN: Record<ComponentKey, number> = {
+  readScope: PERIOD_BUDGET.readScope,
+  readRevisit: PERIOD_BUDGET.readRevisit,
+  verificationFreshness: PERIOD_BUDGET.verificationFreshness,
+  verificationRedundancy: PERIOD_BUDGET.verificationRedundancy,
+  instrumentedChannel: PERIOD_BUDGET.instrumentedChannel,
+  indexedRetrieval: PERIOD_BUDGET.indexedRetrieval,
+  fileFind: MIN_NON_AXIS_DEN,
+  groundedEdit: MIN_NON_AXIS_DEN,
+  rework: MIN_NON_AXIS_DEN,
+  gateRepeat: MIN_NON_AXIS_DEN,
+  outputBrevity: MIN_NON_AXIS_DEN,
+  contextWeight: MIN_NON_AXIS_DEN,
+  humanIntervention: MIN_NON_AXIS_DEN,
+  deliveryReach: 8,
+};
 
 /** 이력이 이만큼은 쌓여야 백분위·통상범위·최고를 낸다. */
 const MIN_HISTORY_WINDOWS = 4;
@@ -267,10 +304,13 @@ function component(
   denominator: number,
   displayOnly = false,
 ): StatComponent {
+  // 분모가 얇으면 값을 내지 않는다. 여기 한 곳에서 걸러야 구성요소마다 다른 규칙이
+  // 생기지 않는다. 분모는 그대로 남겨 화면이 왜 값이 없는지 말할 수 있게 한다.
+  const thick = denominator >= MIN_COMPONENT_DEN[key];
   return {
     key,
     label: COMPONENT_LABELS[key],
-    value,
+    value: thick ? value : null,
     denominator,
     ...(displayOnly ? { displayOnly: true } : {}),
   };
@@ -356,9 +396,7 @@ export function computeStats(
       // 값은 계속 낸다. 코드를 고치고 아무 데도 안 닿은 11건은 볼 값어치가 있다.
       component(
         "deliveryReach",
-        period.delivery.den < MIN_DELIVERY_SESSIONS
-          ? null
-          : ratio(period.delivery),
+        ratio(period.delivery),
         period.delivery.den,
         true,
       ),
