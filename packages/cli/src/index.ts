@@ -43,11 +43,15 @@ import {
   scan,
   ScouterDb,
   guardBrokenPipe,
+  CAPABILITY_LABELS,
+  DECLARABLE_CAPABILITIES,
+  parseCapabilities,
   L,
   resolveLang,
   t,
   tList,
   type AxisDelta,
+  type Capability,
   type Lang,
   type Localized,
   type PeriodReport,
@@ -147,6 +151,9 @@ const USAGE: Localized = L(
                                                 스테이터스 창을 HTML로 낸다 (--diag 면 누수 진단)
 
   --lang <ko|en>                                화면 언어. 없으면 SCOUTER_LANG, 로케일, 영어 순으로 고른다
+  --capabilities <a,b,c>                        이 하네스가 실제로 가진 능력. 없으면 SCOUTER_CAPABILITIES,
+                                                그것도 없으면 Claude Code 프로필에서 추론한다.
+                                                선언에서 빠진 능력에 기대는 축은 0 이 아니라 판정 불가로 낸다.
 `,
   `harness-scouter
 
@@ -168,6 +175,10 @@ const USAGE: Localized = L(
                                                   Emit the stat window as HTML (--diag for leak diagnosis)
 
   --lang <ko|en>                                  Display language. Falls back to SCOUTER_LANG, the locale, then English
+  --capabilities <a,b,c>                          What this harness can actually reach. Falls back to
+                                                  SCOUTER_CAPABILITIES, then to the Claude Code profile.
+                                                  Axes needing a capability you did not declare come out
+                                                  not-computable rather than zero.
 `,
 );
 
@@ -327,6 +338,49 @@ async function main(): Promise<void> {
     return;
   }
   const usage = t(USAGE, lang);
+
+  /**
+   * 이 하네스가 실제로 가진 능력.
+   *
+   * 선언이 없으면 지금까지처럼 Claude Code 프로필의 매핑에서 추론한다. 추론은 매핑에
+   * `Grep` 이 있는 한 `index-search` 도 있다고 말하는데, qmd·graphify 가 깔려 있지 않은
+   * 하네스에서 그것은 "있는데 안 썼다" 가 아니라 "없다" 다.
+   *
+   * 자동 탐지(PATH·MCP 설정 조회)로 대신하지 않는다. 재는 대상은 지금 이 기계가 아니라
+   * 트랜스크립트를 남긴 그 하네스라서, 여기서 찾은 qmd 가 저기 있었다는 근거가 못 된다.
+   */
+  let declaredCapabilities: ReadonlySet<Capability> | undefined;
+  const capabilityFlag =
+    flags.get("capabilities") ?? process.env["SCOUTER_CAPABILITIES"];
+  if (capabilityFlag !== undefined && capabilityFlag !== "true") {
+    const { declared, unknown } = parseCapabilities(capabilityFlag);
+    if (unknown.length > 0) {
+      process.stderr.write(
+        say(
+          lang,
+          `모르는 능력 이름입니다: ${unknown.join(", ")}\n적을 수 있는 이름: ${DECLARABLE_CAPABILITIES.join(", ")}\n`,
+          `Unknown capability names: ${unknown.join(", ")}\nNames you can declare: ${DECLARABLE_CAPABILITIES.join(", ")}\n`,
+        ),
+      );
+      process.exitCode = 1;
+      return;
+    }
+    declaredCapabilities = new Set(declared);
+  }
+  /** 선언한 능력을 화면에 그대로 적는다. 가정을 말 없이 쓰지 않는다. */
+  const capabilityNote = (): string => {
+    if (declaredCapabilities === undefined) return "";
+    const names = [...declaredCapabilities]
+      .map((c) => t(CAPABILITY_LABELS[c], lang))
+      .join(" · ");
+    const empty = say(lang, "없음", "none");
+    return say(
+      lang,
+      `  선언한 능력   ${names === "" ? empty : names}\n  선언에서 빠진 능력에 기대는 축은 —(판정 불가)로 냅니다.\n`,
+      `  Declared capabilities   ${names === "" ? empty : names}\n  Axes needing a capability you did not declare read — (not computable).\n`,
+    );
+  };
+
   const noClosedPeriod = say(
     lang,
     "닫힌 구간이 없습니다.",
@@ -466,6 +520,7 @@ async function main(): Promise<void> {
     }
     const w = buildStatWindow(current, closed, {
       rankByAbsoluteScore: flags.has("all"),
+      available: declaredCapabilities,
     });
     const bar = (score: number | null): string => {
       if (score === null) return "·".repeat(24);
@@ -494,6 +549,7 @@ async function main(): Promise<void> {
         (w.judgeable ? "" : say(lang, "  판정 보류", "  judgment withheld")) +
         "\n",
     );
+    process.stdout.write(capabilityNote());
     process.stdout.write(`  ${"─".repeat(80)}\n`);
     for (const stat of w.stats) {
       const score =
@@ -652,6 +708,7 @@ async function main(): Promise<void> {
     }
     const w = buildStatWindow(target, closed, {
       rankByAbsoluteScore: flags.has("all"),
+      available: declaredCapabilities,
     });
     process.stdout.write(
       say(lang, "\n  성장 가이드\n\n", "\n  Growth guide\n\n"),
@@ -1367,6 +1424,7 @@ async function main(): Promise<void> {
         : renderStatHtml(
             buildStatWindow(target, closedForHtml, {
               rankByAbsoluteScore: flags.has("all"),
+              available: declaredCapabilities,
             }),
             lang,
             {
@@ -1406,7 +1464,10 @@ async function main(): Promise<void> {
             const merged = mergePeriods(closed);
             return merged === null
               ? null
-              : buildStatWindow(merged, closed, { rankByAbsoluteScore: true });
+              : buildStatWindow(merged, closed, {
+                  rankByAbsoluteScore: true,
+                  available: declaredCapabilities,
+                });
           })(),
           diagnoses,
           leakCount: diagnoses.reduce(

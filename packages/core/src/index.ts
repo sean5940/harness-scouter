@@ -2,6 +2,7 @@ export * from "./types.js";
 export * from "./i18n.js";
 export * from "./stdio.js";
 export * from "./definitions.js";
+export * from "./capability.js";
 export * from "./parser.js";
 export * from "./extract.js";
 export * from "./db.js";

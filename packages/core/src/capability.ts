@@ -30,6 +30,46 @@ export type Capability =
   | "subagent"
   | "other";
 
+/**
+ * 선언으로 받을 수 있는 능력의 이름.
+ *
+ * `other` 는 뺀다. 축이 보지 않는 자리라 선언해도 아무것도 안 바뀌는데, 이름이 목록에
+ * 있으면 적어 두면 뭔가 되는 줄 알게 된다.
+ */
+export const DECLARABLE_CAPABILITIES: readonly Capability[] = [
+  "file-find",
+  "content-search",
+  "index-search",
+  "index-fetch",
+  "file-read",
+  "file-edit",
+  "shell",
+  "subagent",
+];
+
+/**
+ * 쉼표로 이어 적은 능력 선언을 읽는다.
+ *
+ * 모르는 이름은 버리지 않고 돌려준다. 조용히 버리면 `index_search` 라고 오타를 낸
+ * 사람이 "인덱스 검색이 있다고 선언했는데 왜 판정 불가지" 를 영영 못 푼다. 틀린 이름은
+ * 화면에서 틀렸다고 말해야 한다.
+ */
+export function parseCapabilities(raw: string): {
+  declared: Capability[];
+  unknown: string[];
+} {
+  const declared: Capability[] = [];
+  const unknown: string[] = [];
+  for (const piece of raw.split(",")) {
+    const name = piece.trim();
+    if (name === "") continue;
+    const known = DECLARABLE_CAPABILITIES.find((c) => c === name);
+    if (known === undefined) unknown.push(name);
+    else if (!declared.includes(known)) declared.push(known);
+  }
+  return { declared, unknown };
+}
+
 export const CAPABILITY_LABELS: Record<Capability, Localized> = {
   "file-find": L("파일 찾기", "Find files"),
   "content-search": L("내용 스캔", "Scan contents"),
