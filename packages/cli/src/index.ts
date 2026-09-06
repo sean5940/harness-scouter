@@ -45,6 +45,7 @@ import {
   guardBrokenPipe,
   CAPABILITY_LABELS,
   DECLARABLE_CAPABILITIES,
+  MIN_COVERAGE_TO_SCORE,
   parseCapabilities,
   L,
   resolveLang,
@@ -381,6 +382,33 @@ async function main(): Promise<void> {
     );
   };
 
+  /**
+   * 점수 대신 무엇이 안 잡혔는지를 낸다.
+   *
+   * 점수를 낼 수 있으면 `null` 이다. 매핑 커버리지가 바닥 아래면 이 화면은 하네스가
+   * 아니라 프로필의 빈칸을 보여주는 것이라, 남의 하네스가 나빠서 낮은 것처럼 읽힌다.
+   */
+  const withheldReport = (w: {
+    scoreWithheld: "capability" | null;
+    capabilityCoverage: number | null;
+    unmappedTop: Array<{ name: string; count: number }>;
+  }): string | null => {
+    if (w.scoreWithheld === null) return null;
+    const pct = ((w.capabilityCoverage ?? 0) * 100).toFixed(0);
+    const floor = (MIN_COVERAGE_TO_SCORE * 100).toFixed(0);
+    const rows = w.unmappedTop
+      .map(
+        ({ name, count }) =>
+          `    ${padEndW(name, 28)}${count.toLocaleString().padStart(8)}\n`,
+      )
+      .join("");
+    return say(
+      lang,
+      `\n  점수를 내지 않습니다.\n\n  프로필이 이 창의 도구 호출 중 ${pct}% 만 알아봤습니다. ${floor}% 아래로 떨어지면\n  이 화면은 하네스가 아니라 프로필의 빈칸을 보여주게 됩니다.\n\n  안 잡힌 호출\n${rows}\n  packages/core/src/capability.ts 의 프로필에 이 이름들을 더하면 점수가 다시 나옵니다.\n  능력 자체가 없는 하네스라면 --capabilities 로 선언하세요.\n`,
+      `\n  No score.\n\n  The profile recognized only ${pct}% of the tool calls in this window. Below ${floor}%\n  this screen shows the gaps in the profile, not the harness.\n\n  Calls not recognized\n${rows}\n  Add these names to the profile in packages/core/src/capability.ts to score again.\n  If the harness truly lacks the capability, declare it with --capabilities.\n`,
+    );
+  };
+
   const noClosedPeriod = say(
     lang,
     "닫힌 구간이 없습니다.",
@@ -530,8 +558,15 @@ async function main(): Promise<void> {
     const scope = flags.has("all")
       ? say(lang, "전수 집계", "all-time")
       : say(lang, `구간 #${w.periodIndex}`, `period #${w.periodIndex}`);
+    // 점수를 보류하는 창에서는 레벨과 등급도 안 적는다. 아래에서 "점수를 내지
+    // 않습니다" 라고 해 놓고 머리에 Lv. 61 C 를 그대로 두면 그 문장이 거짓이 된다.
+    const withheld = withheldReport(w);
+    const level =
+      withheld === null
+        ? `Lv.${String(w.level).padStart(3)}  ${w.overallRank}`
+        : say(lang, "Lv.  —  —", "Lv.  —  —");
     process.stdout.write(
-      `\n  HARNESS SCOUTER  ${padEndW(scope, COLUMNS[lang].scope)}   Lv.${String(w.level).padStart(3)}  ${w.overallRank}\n`,
+      `\n  HARNESS SCOUTER  ${padEndW(scope, COLUMNS[lang].scope)}   ${level}\n`,
     );
     process.stdout.write(
       say(
@@ -550,6 +585,11 @@ async function main(): Promise<void> {
         "\n",
     );
     process.stdout.write(capabilityNote());
+    if (withheld !== null) {
+      process.stdout.write(withheld);
+      db.close();
+      return;
+    }
     process.stdout.write(`  ${"─".repeat(80)}\n`);
     for (const stat of w.stats) {
       const score =
@@ -710,6 +750,13 @@ async function main(): Promise<void> {
       rankByAbsoluteScore: flags.has("all"),
       available: declaredCapabilities,
     });
+    // 점수를 못 내는 창에서는 병목도 못 고른다. 순위가 프로필의 빈칸을 따라간다.
+    const guideWithheld = withheldReport(w);
+    if (guideWithheld !== null) {
+      process.stdout.write(guideWithheld);
+      db.close();
+      return;
+    }
     process.stdout.write(
       say(lang, "\n  성장 가이드\n\n", "\n  Growth guide\n\n"),
     );

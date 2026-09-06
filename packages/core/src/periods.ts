@@ -7,13 +7,16 @@ import {
   type AxisKey,
 } from "./definitions.js";
 import {
+  addCapability,
   addCounts,
   addExtras,
   axisScore,
   coverageRatio,
   emptyAxes,
+  emptyCapability,
   emptyExtras,
   type AxisCounts,
+  type CapabilityCounts,
   type CoverageCount,
   type ExtraCounts,
   type SessionMetrics,
@@ -55,6 +58,15 @@ export interface Period {
   /** 코드를 고친 세션 중 커밋이나 PR까지 간 비율. 완수력이 쓴다. */
   delivery: { num: number; den: number };
   coverage: CoverageCount;
+  /**
+   * 프로필이 이 구간의 도구 호출을 얼마나 덮었는가.
+   *
+   * 위의 `coverage` 와 다른 것을 센다. 저것은 계측 채널로 본 호출의 비율이고, 이것은
+   * 본 호출 중 능력에 매핑된 비율이다. 매핑표가 낡으면 저것은 그대로인데 이것만
+   * 떨어진다. 세션 단위로는 이미 세고 있었는데 구간으로 올라오는 길이 없어서
+   * 아무도 읽지 못했다.
+   */
+  capability: CapabilityCounts;
   /** 예산을 채워 닫혔는지. false면 세션 상한에 걸려 강제로 닫힌 구간이다. */
   closedByBudget: boolean;
   /** 예산 미달인 축. 이 축은 회색으로 그린다. */
@@ -117,6 +129,7 @@ export function segmentIntoPeriods(sessions: SessionForPeriod[]): Period[] {
   let usage = emptyUsage();
   let delivery = { num: 0, den: 0 };
   let coverage: CoverageCount = { observable: 0, offChannel: 0, opaque: 0 };
+  let capability: CapabilityCounts = emptyCapability();
   let members: SessionForPeriod[] = [];
 
   const flush = (closedByBudget: boolean, open: boolean): void => {
@@ -134,6 +147,7 @@ export function segmentIntoPeriods(sessions: SessionForPeriod[]): Period[] {
       usage,
       delivery,
       coverage,
+      capability,
       closedByBudget,
       unfilledAxes: unfilled(axes, fillable),
       open,
@@ -144,6 +158,7 @@ export function segmentIntoPeriods(sessions: SessionForPeriod[]): Period[] {
     usage = emptyUsage();
     delivery = { num: 0, den: 0 };
     coverage = { observable: 0, offChannel: 0, opaque: 0 };
+    capability = emptyCapability();
     members = [];
   };
 
@@ -165,6 +180,7 @@ export function segmentIntoPeriods(sessions: SessionForPeriod[]): Period[] {
     coverage.observable += session.metrics.coverage.observable;
     coverage.offChannel += session.metrics.coverage.offChannel;
     coverage.opaque += session.metrics.coverage.opaque;
+    capability = addCapability(capability, session.metrics.capability);
     members.push(session);
 
     // 예산을 채웠어도 세션이 너무 적으면 더 모은다. 세션 하나가 예산을 다 채우는
