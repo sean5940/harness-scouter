@@ -253,8 +253,6 @@ function meaningfulTokens(segment: string): string[] {
  * `go vet` 을 어디에 넣을지가 억지가 되고, 진단 화면의 "tsc 재실행" 은 Go 하네스에서
  * 읽을 수 없는 말이 된다. 종류는 공회전 판정의 묶음 키이자 화면에 그대로 나가는 말이라
  * 언어에 매이면 안 된다.
- *
- * 묶음은 1대1 로 바꾼다. 같은 것끼리 그대로 묶이므로 점수는 안 움직인다.
  */
 const KIND_TYPECHECK = "typecheck";
 const KIND_LINT = "lint";
@@ -262,26 +260,133 @@ const KIND_FORMAT = "format";
 const KIND_TEST = "test";
 const KIND_BUILD = "build";
 
+/**
+ * 이름만으로 검증인 것이 정해지는 실행 파일.
+ *
+ * 첫 판은 `tsc`·`eslint`·`prettier`·`jest`·`vitest`·`pytest`·`mocha` 뿐이었다. 그래서
+ * Go·Swift·Rust 하네스에서는 검증이 거의 안 잡혔다. 보고된 코퍼스에서 Bash 28,414건 중
+ * 검증으로 인식된 것이 3건이고, 검증 형태인데 못 잡은 것이 10,937건이었다. 화면은
+ * "커밋 전 검증 신선도 0%" 라고 말했는데 그중 95%가 거짓 음성이었다.
+ */
 const VERIFIER_BINARIES: ReadonlyArray<readonly [string, RegExp]> = [
-  [KIND_TYPECHECK, /^tsc$/],
-  [KIND_LINT, /^eslint$/],
-  [KIND_FORMAT, /^prettier$/],
-  [KIND_TEST, /^(jest|vitest|pytest|mocha)$/],
+  [KIND_TYPECHECK, /^(tsc|mypy|pyright|pyre|flow)$/],
+  [KIND_LINT, /^(eslint|golangci-lint|staticcheck|govulncheck|revive)$/],
+  [KIND_LINT, /^(ruff|flake8|pylint|shellcheck|swiftlint|detekt)$/],
+  [KIND_FORMAT, /^(prettier|gofmt|goimports|rustfmt|swift-format|ktlint)$/],
+  [KIND_TEST, /^(jest|vitest|pytest|mocha|ava|tox|nox|ctest)$/],
+  [KIND_BUILD, /^(xcodebuild|cmake)$/],
 ];
 
 /**
- * npm·yarn·pnpm 스크립트 이름으로 검증을 판정한다.
+ * `xcodebuild` 의 동작 이름. 플래그가 잔뜩 앞에 붙고 동작이 맨 뒤에 오는 형태가 흔해서
+ * 서브커맨드 자리를 첫 낱말로 보는 규칙이 안 통한다. 동작 어휘가 닫혀 있어 따로 본다.
+ */
+const XCODEBUILD_TEST_ACTION = /^(test|test-without-building)$/;
+
+/**
+ * 서브커맨드까지 봐야 검증인지 갈리는 실행 파일.
+ *
+ * `go test` 는 검증이고 `go run` 은 그냥 실행이다. 선두 토큰만 보면 둘이 같아 보인다.
+ * 반대로 서브커맨드를 안 보고 `go` 를 통째로 검증으로 세면 `go mod tidy` 까지 검증이 된다.
+ */
+const SUBCOMMAND_VERIFIERS: ReadonlyArray<
+  readonly [RegExp, ReadonlyArray<readonly [string, RegExp]>]
+> = [
+  [
+    /^go$/,
+    [
+      [KIND_TEST, /^test$/],
+      [KIND_BUILD, /^(build|install)$/],
+      [KIND_LINT, /^vet$/],
+    ],
+  ],
+  [
+    /^cargo$/,
+    [
+      [KIND_TEST, /^(test|nextest)$/],
+      [KIND_BUILD, /^(build|check)$/],
+      [KIND_LINT, /^clippy$/],
+    ],
+  ],
+  [
+    /^swift$/,
+    [
+      [KIND_TEST, /^test$/],
+      [KIND_BUILD, /^build$/],
+    ],
+  ],
+  [
+    /^(dart|flutter)$/,
+    [
+      [KIND_TEST, /^test$/],
+      // `dart analyze` 는 Dart 의 형 검사기다. `go vet` 과 달리 형 오류를 여기서 잡는다.
+      [KIND_TYPECHECK, /^analyze$/],
+      [KIND_BUILD, /^build$/],
+    ],
+  ],
+  [
+    /^dotnet$/,
+    [
+      [KIND_TEST, /^test$/],
+      [KIND_BUILD, /^build$/],
+    ],
+  ],
+  [
+    /^mvn$/,
+    [
+      [KIND_TEST, /^test$/],
+      [KIND_BUILD, /^(verify|package|compile)$/],
+    ],
+  ],
+  [
+    /^bazel$/,
+    [
+      [KIND_TEST, /^test$/],
+      [KIND_BUILD, /^build$/],
+    ],
+  ],
+];
+
+/**
+ * 러너가 이름으로 부르는 작업. npm 스크립트·make 타깃·gradle 태스크가 같은 모양이다.
  *
  * 이걸 놓치면 레포마다 값이 달라진다. raw `npx tsc`를 쓰는 레포는 정상으로 잡히고
  * `npm run typecheck`를 쓰는 레포는 검증을 아예 안 한 것으로 잡혀 비교가 성립하지 않는다.
+ * make·gradle 도 같은 자리에 있다. 보고된 코퍼스에서 `make <target>` 만 863건이었다.
  */
 const SCRIPT_KINDS: ReadonlyArray<readonly [string, RegExp]> = [
-  [KIND_TYPECHECK, /^(typecheck|type-check|tsc|types?)$/],
-  [KIND_LINT, /^(lint|eslint|lint:fix)$/],
-  [KIND_FORMAT, /^(format|format:check|fmt|prettier)$/],
-  [KIND_TEST, /^(test|tests|test:unit|jest|vitest)$/],
-  [KIND_BUILD, /^(build|compile)$/],
+  [KIND_TYPECHECK, /^(typecheck|type-check|tsc|types?|analyze)$/],
+  [KIND_LINT, /^(lint|eslint|lint:fix|vet)$/],
+  [KIND_FORMAT, /^(format|format:check|fmt|prettier|gofmt)$/],
+  [KIND_TEST, /^(test|tests|test:unit|jest|vitest|check|verify)$/],
+  [KIND_BUILD, /^(build|compile|assemble)$/],
 ];
+
+/** 이름으로 작업을 받는 러너. 뒤에 오는 첫 낱말이 무엇을 하는지 말한다. */
+const TASK_RUNNERS =
+  /^(npm|yarn|pnpm|bun|make|gmake|just|task|gradle|gradlew)$/;
+
+/**
+ * 검증을 도는 셸 스크립트.
+ *
+ * `./verify-metrics.sh` 같은 것은 이름 목록으로는 영원히 안 잡힌다. 보고된 코퍼스에서
+ * 336건이 이 모양이었다. 종류를 스크립트 이름 그대로 두는 이유는 공회전 판정 때문이다.
+ * 전부 `script` 한 종류로 접으면 서로 다른 검증 스크립트 두 개를 연달아 돌린 것이
+ * 같은 것의 재실행으로 잡힌다.
+ */
+const VERIFIER_SCRIPT =
+  /^(verify|check|validate|lint|test|ci)([-_.][\w.-]*)?\.(sh|bash|zsh)$/;
+
+/** 스크립트를 인자로 받는 셸. 실행 대상은 그 다음 토큰이다. */
+const SHELL_HEAD = /^(bash|sh|zsh)$/;
+
+/**
+ * 고치지 않고 보기만 하는 포맷 플래그.
+ *
+ * `go fmt`·`cargo fmt` 는 기본이 파일 다시 쓰기라 검증이 아니다. `prettier --write` 를
+ * 검증에서 빼는 것과 같은 이유다. 이 플래그가 붙을 때만 본 것이라 검증으로 센다.
+ */
+const FORMAT_CHECK_FLAG = /^(--check|--check-only|--dry-run|--diff|-l)$/;
 
 /**
  * 도구를 부르지만 아무것도 검증하지 않는 인자.
@@ -290,7 +395,18 @@ const SCRIPT_KINDS: ReadonlyArray<readonly [string, RegExp]> = [
  * 한 줄 접합하는 것만으로 신선도가 만점이 된다. 출력으로는 못 가른다. 조용히 통과하는
  * tsc는 출력이 아예 없어서 버전 조회와 구분이 안 되기 때문이다.
  */
-const NO_OP_VERIFIER_FLAG = /^(--version|-v|-V|--help|-h)$/;
+const NO_OP_VERIFIER_FLAG = /^(--version|--help|-h)$/;
+
+/**
+ * `-v` 가 판버전을 뜻하는 도구.
+ *
+ * `-v` 를 어디서나 판버전으로 보면 `go test -v ./...` 와 `pytest -v` 가 통째로 검증에서
+ * 빠진다. 둘 다 그 언어에서 가장 흔한 검증 형태라, 이 한 글자로 Go·Python 하네스의
+ * 신선도가 0 이 된다. 반대로 어디서도 판버전으로 안 보면 `tsc -v` 가 검증이 된다.
+ * 도구마다 다른 말이므로 도구별로 적는다.
+ */
+const SHORT_V_IS_VERSION =
+  /^(tsc|tsx|eslint|prettier|node|npm|yarn|pnpm|bun|vitest|jest|mocha)$/;
 
 function verifierKindsOf(tokens: string[]): string[] {
   const kinds = new Set<string>();
@@ -305,22 +421,61 @@ function verifierKindsOf(tokens: string[]): string[] {
   if (head === undefined) return [];
 
   const bare = head.split("/").pop() ?? head;
+  if (
+    SHORT_V_IS_VERSION.test(bare) &&
+    tokens.some((t) => t === "-v" || t === "-V")
+  )
+    return [];
+
   for (const [kind, re] of VERIFIER_BINARIES) {
     if (re.test(bare)) kinds.add(kind);
   }
+  // `bash scripts/verify.sh` 처럼 셸을 앞세운 형태도 같은 실행이다. 껍데기를 벗기는
+  // unwrapShellWrapper 는 `-c` 형태만 보므로 여기서 한 겹 더 본다.
+  const scriptHead = SHELL_HEAD.test(bare)
+    ? (tokens[i + 1]?.split("/").pop() ?? "")
+    : bare;
+  if (VERIFIER_SCRIPT.test(scriptHead)) kinds.add(scriptHead);
 
-  if (/^(npm|yarn|pnpm|bun)$/.test(bare)) {
-    const rest = tokens.slice(i + 1).filter((t) => !t.startsWith("-"));
-    const script = rest[0] === "run" ? rest[1] : rest[0];
-    if (script !== undefined) {
+  const words = tokens.slice(i + 1).filter((t) => !t.startsWith("-"));
+
+  if (
+    bare === "xcodebuild" &&
+    words.some((w) => XCODEBUILD_TEST_ACTION.test(w))
+  ) {
+    kinds.delete(KIND_BUILD);
+    kinds.add(KIND_TEST);
+  }
+
+  // 서브커맨드는 플래그를 걷어낸 첫 낱말이다. 낱말 전체를 훑지 않는 이유는
+  // `go build -o test` 의 `test` 처럼 플래그의 값이 서브커맨드로 잡히기 때문이다.
+  for (const [runner, table] of SUBCOMMAND_VERIFIERS) {
+    if (!runner.test(bare)) continue;
+    const sub = words[0];
+    if (sub === undefined) continue;
+    for (const [kind, re] of table) {
+      if (re.test(sub)) kinds.add(kind);
+    }
+  }
+
+  if (
+    /^(go|cargo|dart|dotnet)$/.test(bare) &&
+    /^(fmt|format)$/.test(words[0] ?? "") &&
+    tokens.some((t) => FORMAT_CHECK_FLAG.test(t))
+  )
+    kinds.add(KIND_FORMAT);
+
+  if (TASK_RUNNERS.test(bare)) {
+    const task = words[0] === "run" ? words[1] : words[0];
+    if (task !== undefined) {
       for (const [kind, re] of SCRIPT_KINDS) {
-        if (re.test(script)) kinds.add(kind);
+        if (re.test(task)) kinds.add(kind);
       }
     }
   }
 
   // 스크립트 러너로 도는 검증 도구
-  if (/^(tsx|ts-node|node)$/.test(bare)) {
+  if (/^(tsx|ts-node|node|python3?|ruby)$/.test(bare)) {
     const target = tokens[i + 1];
     if (target !== undefined && /lint|typecheck|verify/.test(target))
       kinds.add(KIND_LINT);
@@ -353,6 +508,9 @@ function verifierTargetsOf(all: string[]): string[] {
   // 러너·서브커맨드 자리는 건너뛴다. `npm run test:unit` 의 test:unit 은 파일이 아니다.
   const bare = (tokens[i] ?? "").split("/").pop() ?? "";
   if (/^(npm|yarn|pnpm|bun)$/.test(bare)) return [];
+  // 셸이 앞에 서면 실행 대상은 그 다음 토큰이다. 스크립트 자기 이름을 검증 대상으로
+  // 세면 `bash verify.sh` 가 자기 자신만 본 좁은 검증이 되어 신선도를 잃는다.
+  if (SHELL_HEAD.test(bare)) i += 1;
   i += 1;
   for (; i < tokens.length; i += 1) {
     const token = tokens[i] as string;
@@ -366,10 +524,19 @@ function verifierTargetsOf(all: string[]): string[] {
     if (token === "run") continue;
     const bareToken = token.replace(/^['"]|['"]$/g, "");
     if (bareToken === "") continue;
+    // Go 의 패키지 패턴. `./...` 는 모듈 전체라 대상을 안 적은 것과 같고
+    // `./internal/...` 은 그 아래 전부다. 그대로 두면 어느 편집 경로와도 안 맞아
+    // `go test ./...` 이 "고친 것을 안 덮은 검증"이 되어 신선도가 통째로 0 이 된다.
+    const pkg = /^\.?\/?(.*?)\/?\.\.\.$/.exec(bareToken);
+    if (pkg !== null) {
+      const under = pkg[1] ?? "";
+      if (under !== "") out.push(under);
+      continue;
+    }
     // 경로로 보는 것은 구분자나 코드 확장자를 가진 토큰뿐이다.
     const looksLikePath =
       bareToken.includes("/") || /\.[A-Za-z0-9]{1,5}$/.test(bareToken);
-    if (looksLikePath) out.push(bareToken);
+    if (looksLikePath) out.push(bareToken.replace(/^\.\//, ""));
   }
   return out;
 }
@@ -581,7 +748,8 @@ function fileWriteOf(
   return null;
 }
 
-const FORMATTER = /^(prettier|eslint|gofmt|black|rustfmt|ktlint)$/;
+const FORMATTER =
+  /^(prettier|eslint|gofmt|goimports|black|rustfmt|swift-format|ktlint|ruff)$/;
 
 function isFormatterSegment(tokens: string[]): boolean {
   let i = 0;
