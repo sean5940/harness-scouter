@@ -39,6 +39,7 @@ import {
   defaultDbPath,
   defaultTranscriptRoot,
   PERIOD_MIN_SESSIONS,
+  periodSizeSpread,
   MIN_SESSIONS_FOR_SPLIT_HALF,
   scan,
   ScouterDb,
@@ -730,6 +731,22 @@ async function main(): Promise<void> {
           : say(lang, " 상한", " cap");
       process.stdout.write(
         `  ${String(p.index).padStart(2)} ${String(p.sessionIds.length).padStart(4)}  ${p.startedAt.slice(0, 10)}~${p.endedAt.slice(5, 10)}  ${scores}${note}\n`,
+      );
+    }
+    // 구간 크기가 얼마나 벌어져 있는지 적는다. 이걸 안 적으면 재현성 게이트의 실패가
+    // 하네스 탓으로 읽힌다. 크기가 크게 다른 점들을 같은 무게로 비교한 결과일 수 있다.
+    const spread = periodSizeSpread(result.periods);
+    if (spread !== null) {
+      const times =
+        spread.ratio === null
+          ? "—"
+          : `${spread.ratio.toFixed(1)}${say(lang, "배", "x")}`;
+      process.stdout.write(
+        say(
+          lang,
+          `\n  구간 크기(턴)  최소 ${spread.min.toLocaleString()} · 중앙값 ${spread.median.toLocaleString()} · 최대 ${spread.max.toLocaleString()} · 최대/최소 ${times}\n  이 값이 크면 gate 의 재현성이 하네스가 아니라 구간 크기 차이에서 옵니다.\n`,
+          `\n  Period size (turns)  min ${spread.min.toLocaleString()} · median ${spread.median.toLocaleString()} · max ${spread.max.toLocaleString()} · max/min ${times}\n  When this is large, the gate's reproducibility reflects period size, not the harness.\n`,
+        ),
       );
     }
     db.close();
