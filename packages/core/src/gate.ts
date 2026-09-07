@@ -77,16 +77,34 @@ export interface GateCheck {
  * 재현돼야 한다(split-half). 실측에서 6축 중 5축이 뒤에서만 죽는다.
  *
  * 하나로 합쳐 내면 "0/6" 이 되어 전수 집계 화면까지 근거 없는 것처럼 보인다.
+ *
+ * 지지 여부도 3값이다. 이것을 boolean 으로 접으면 "재봤고 아니었다" 와 "아직 못 쟀다"
+ * 가 화면에서 같은 말이 된다. 이 도구의 제1규칙이 재보지 못한 것을 통과로 세지 않는
+ * 것인데, 부호만 뒤집어 미달로 세는 것도 같은 잘못이다. `0/6` 을 보고 여섯 축이
+ * 재현에 실패했다고 읽는 것과, 여섯 축을 아직 못 쟀다고 읽는 것은 해야 할 일이 다르다.
+ * 앞은 축을 고쳐야 하고 뒤는 세션을 더 쌓아야 한다.
  */
 export interface AxisGate {
   axis: AxisKey;
   checks: GateCheck[];
   /** 전수 집계 화면을 뒷받침하는가. */
-  supportsAllTime: boolean;
+  supportsAllTime: GateVerdict;
   /** 구간별 화면을 뒷받침하는가. 전수 집계 조건에 구간 내 재현성이 더 필요하다. */
-  supportsPerPeriod: boolean;
+  supportsPerPeriod: GateVerdict;
   /** 두 화면을 모두 뒷받침하는가. */
   passed: boolean;
+}
+
+/**
+ * 검사 여럿을 하나의 판정으로 접는다.
+ *
+ * 미달이 하나라도 있으면 미달이다. 미달은 없는데 못 잰 것이 있으면 판정 불가다.
+ * 순서가 중요하다. 뒤집으면 진짜 미달이 "아직 모른다" 뒤에 숨는다.
+ */
+function foldVerdicts(verdicts: GateVerdict[]): GateVerdict {
+  if (verdicts.some((v) => v === "fail")) return "fail";
+  if (verdicts.some((v) => v === "not-computable")) return "not-computable";
+  return "pass";
 }
 
 export interface GateResult {
@@ -1150,10 +1168,16 @@ export function runGate(
         name: L("split-half", "split-half"),
         // 판정은 순열 중앙값으로 한다. 분포의 상단을 보고 임계를 느슨하게 하고 싶어지는데,
         // 그러면 게이트가 아니라 통과시킬 이유를 찾는 장치가 된다.
+        //
+        // 통계를 못 내면 미달이 아니라 계산 불가다. 값 칸에는 "계산 불가" 를 적으면서
+        // 판정만 미달로 주고 있었다. 재보지 못한 것을 통과로 세지 않는 규칙의 거울상이고,
+        // 같은 잘못이다. 구간이 모자라 못 잰 축과 재현이 안 되는 축은 해야 할 일이 다르다.
         verdict:
-          permuted !== null && permuted.median >= SPLIT_HALF_PASS
-            ? "pass"
-            : "fail",
+          permuted === null
+            ? "not-computable"
+            : permuted.median >= SPLIT_HALF_PASS
+              ? "pass"
+              : "fail",
         value:
           permuted === null
             ? t(NOT_COMPUTABLE, lang)
@@ -1342,20 +1366,20 @@ export function runGate(
       // 분산 성분은 판정이 아니라 처방이라 화면 지원 여부를 가르지 않는다.
       "variance-components",
     ]);
-    // 화면을 뒷받침하려면 통과여야 한다. 계산 불가는 미달과 달리 "재보지 못했다"는
-    // 뜻이지만, 재보지 못한 것도 지지 근거는 못 된다. 무엇이 없어서 못 받쳤는지는
-    // 검사 표의 판정이 보여준다.
-    const supportsAllTime = checks
-      .filter((c) => !PER_PERIOD_ONLY.has(c.key))
-      .every((c) => c.verdict === "pass");
-    const supportsPerPeriod = checks.every((c) => c.verdict === "pass");
+    // 화면을 뒷받침하려면 통과여야 한다. 계산 불가도 지지 근거는 못 되지만, 미달과
+    // 같은 값으로 접지는 않는다. 둘은 해야 할 일이 다르다 — 미달은 축을 고쳐야 하고
+    // 계산 불가는 세션을 더 쌓아야 한다.
+    const supportsAllTime = foldVerdicts(
+      checks.filter((c) => !PER_PERIOD_ONLY.has(c.key)).map((c) => c.verdict),
+    );
+    const supportsPerPeriod = foldVerdicts(checks.map((c) => c.verdict));
 
     return {
       axis,
       checks,
       supportsAllTime,
       supportsPerPeriod,
-      passed: supportsPerPeriod,
+      passed: supportsPerPeriod === "pass",
     };
   });
 
