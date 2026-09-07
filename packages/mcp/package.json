@@ -1,7 +1,6 @@
 {
   "name": "@harness-scouter/mcp",
   "version": "0.3.0",
-  "private": true,
   "type": "module",
   "bin": {
     "scouter-mcp": "./dist/index.js"
@@ -10,7 +9,19 @@
     "@harness-scouter/core": "0.3.0"
   },
   "scripts": {
-    "build": "tsc --build"
+    "build": "tsc --build",
+    "prepack": "tsc --build"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sean5940/harness-scouter.git",
+    "directory": "packages/mcp"
+  }
 }
