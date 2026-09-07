@@ -1,6 +1,6 @@
 {
   "name": "harness-scouter",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "Claude Code 트랜스크립트에서 하네스 설계 품질을 측정한다",
   "type": "module",
