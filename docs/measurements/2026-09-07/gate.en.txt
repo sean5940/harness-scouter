@@ -1,11 +1,11 @@
 
   M0.5 reproducibility gate — 4 closed periods
 
-  not met                Read-scope discipline
+  not computable         Read-scope discipline
         o Saturation                 p05~p95 0.276                                > 0.069 (the value that killed cache_read)
         o Denominator density        median 64                                    >= budget 10
         o Variance components (prescription) signal/noise 3.42 · denominator for reliability 0.5 7 (budget 10) No threshold. This turns a failure into a prescription
-        X split-half                 not computable                               >= 0.5
+        ? split-half                 not computable                               >= 0.5
         o Cross-period predictivity (display) lag-1 r=-0.385 · period-to-period delta is not supported No threshold. The view does not use delta
         o Personal-best reachability best 75.7 · denominator of that period 107   best period denominator >= 10 and inside the quartile fence
         ? Length confound            0.949 · p=not computable · periods 4         fail when |rho| >= 0.5 and p < 0.05; passing needs 12+ periods
@@ -17,7 +17,7 @@
         o Saturation                 p05~p95 0.070                                > 0.069 (the value that killed cache_read)
         o Denominator density        median 15                                    >= budget 10
         o Variance components (prescription) true variance is below noise; a bigger denominator will not help No threshold. This turns a failure into a prescription
-        X split-half                 not computable                               >= 0.5
+        ? split-half                 not computable                               >= 0.5
         o Cross-period predictivity (display) lag-1 r=-0.500 · period-to-period delta is not supported No threshold. The view does not use delta
         o Personal-best reachability best 7.1 · denominator of that period 14     best period denominator >= 10 and inside the quartile fence
         ? Length confound            -0.889 · p=not computable · periods 4        fail when |rho| >= 0.5 and p < 0.05; passing needs 12+ periods
@@ -25,11 +25,11 @@
         X Ceiling unreachable        pushed to the ceiling (3.1 → 100.0)          Must not reach 100 through an activity-invariant path
         o Denominator survival       den 15 · scored periods 4/4                  den >= 10 and period count preserved
 
-  not met                Instrumented-channel use
+  not computable         Instrumented-channel use
         o Saturation                 p05~p95 0.308                                > 0.069 (the value that killed cache_read)
         o Denominator density        median 476                                   >= budget 20
         o Variance components (prescription) signal/noise 16.02 · denominator for reliability 0.5 6 (budget 20) No threshold. This turns a failure into a prescription
-        X split-half                 not computable                               >= 0.5
+        ? split-half                 not computable                               >= 0.5
         o Cross-period predictivity (display) lag-1 r=-0.722 · period-to-period delta is not supported No threshold. The view does not use delta
         o Personal-best reachability best 71.1 · denominator of that period 311   best period denominator >= 20 and inside the quartile fence
         ? Length confound            -0.316 · p=not computable · periods 4        fail when |rho| >= 0.5 and p < 0.05; passing needs 12+ periods
@@ -41,7 +41,7 @@
         o Saturation                 p05~p95 0.091                                > 0.069 (the value that killed cache_read)
         o Denominator density        median 225                                   >= budget 20
         o Variance components (prescription) signal/noise 0.56 · denominator for reliability 0.5 71 (budget 20) No threshold. This turns a failure into a prescription
-        X split-half                 not computable                               >= 0.5
+        ? split-half                 not computable                               >= 0.5
         o Cross-period predictivity (display) lag-1 r=0.742 · period-to-period delta is not supported No threshold. The view does not use delta
         o Personal-best reachability best 93.5 · denominator of that period 124   best period denominator >= 20 and inside the quartile fence
         ? Length confound            0.211 · p=not computable · periods 4         fail when |rho| >= 0.5 and p < 0.05; passing needs 12+ periods
@@ -53,7 +53,7 @@
         o Saturation                 p05~p95 0.183                                > 0.069 (the value that killed cache_read)
         o Denominator density        median 33                                    >= budget 10
         o Variance components (prescription) signal/noise 2.77 · denominator for reliability 0.5 6 (budget 10) No threshold. This turns a failure into a prescription
-        X split-half                 not computable                               >= 0.5
+        ? split-half                 not computable                               >= 0.5
         o Cross-period predictivity (display) lag-1 r=-0.362 · period-to-period delta is not supported No threshold. The view does not use delta
         o Personal-best reachability best 90.9 · denominator of that period 22    best period denominator >= 10 and inside the quartile fence
         ? Length confound            -0.211 · p=not computable · periods 4        fail when |rho| >= 0.5 and p < 0.05; passing needs 12+ periods
@@ -61,11 +61,11 @@
         X Ceiling unreachable        pushed to the ceiling (89.1 → 100.0)         Must not reach 100 through an activity-invariant path
         o Denominator survival       den 33 · scored periods 4/4                  den >= 10 and period count preserved
 
-  not met                Index-first retrieval
+  not computable         Index-first retrieval
         o Saturation                 p05~p95 0.348                                > 0.069 (the value that killed cache_read)
         o Denominator density        median 65                                    >= budget 10
         o Variance components (prescription) signal/noise 4.32 · denominator for reliability 0.5 5 (budget 10) No threshold. This turns a failure into a prescription
-        X split-half                 not computable                               >= 0.5
+        ? split-half                 not computable                               >= 0.5
         o Cross-period predictivity (display) lag-1 r=-0.505 · period-to-period delta is not supported No threshold. The view does not use delta
         o Personal-best reachability best 43.6 · denominator of that period 39    best period denominator >= 10 and inside the quartile fence
         ? Length confound            0.738 · p=not computable · periods 4         fail when |rho| >= 0.5 and p < 0.05; passing needs 12+ periods
@@ -79,4 +79,5 @@
         Check freshness ~ Index-first retrieval  rho=-0.949
         Read round-trip restraint ~ Check redundancy restraint  rho=-1.000
 
-  All-time view 0/6 axes · per-period view 0/6 axes
+  All-time view   0/6 axes supported · 3 failed · 3 not computable
+  Per-period view 0/6 axes supported · 3 failed · 3 not computable

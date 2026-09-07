@@ -226,8 +226,12 @@ describe("계산 불가 판정", () => {
     expect(
       axis?.checks.filter((c) => c.verdict === "pass").map((c) => c.key),
     ).toEqual(["variance-components", "cross-period", "gaming-shift"]);
-    expect(axis?.supportsAllTime).toBe(false);
-    expect(axis?.supportsPerPeriod).toBe(false);
+    // 지지 여부도 3값이다. 여기서는 미달인 검사가 함께 있으므로 미달로 접힌다.
+    // 미달이 하나라도 있으면 미달이어야 한다. 뒤집으면 진짜 미달이 "아직 모른다"
+    // 뒤에 숨는다.
+    expect(axis?.supportsAllTime).not.toBe("pass");
+    expect(axis?.supportsPerPeriod).not.toBe("pass");
+    expect(axis?.supportsAllTime).toBe("fail");
   });
 
   it("상수축의 길이 교란은 계산 불가다", () => {

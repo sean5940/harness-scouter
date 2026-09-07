@@ -1091,11 +1091,16 @@ async function main(): Promise<void> {
       ),
     );
     for (const axis of gate.axes) {
-      const support = axis.supportsPerPeriod
-        ? say(lang, "전수·구간별", "all-time + per-period")
-        : axis.supportsAllTime
-          ? say(lang, "전수 집계만", "all-time only")
-          : say(lang, "미달", "not met");
+      // 미달과 판정 불가를 갈라 적는다. 하나로 접으면 "재봤고 아니었다" 와
+      // "아직 못 쟀다" 가 같은 말이 되고, 읽는 사람이 할 일이 달라진다.
+      const support =
+        axis.supportsPerPeriod === "pass"
+          ? say(lang, "전수·구간별", "all-time + per-period")
+          : axis.supportsAllTime === "pass"
+            ? say(lang, "전수 집계만", "all-time only")
+            : axis.supportsAllTime === "fail"
+              ? say(lang, "미달", "not met")
+              : say(lang, "판정 불가", "not computable");
       process.stdout.write(
         `  ${padEndW(support, cols.gateSupport)}  ${t(AXIS_LABELS[axis.axis], lang)}\n`,
       );
@@ -1148,16 +1153,42 @@ async function main(): Promise<void> {
             .join(""),
       );
     }
-    const allTime = gate.axes.filter((a) => a.supportsAllTime).length;
-    const perPeriod = gate.axes.filter((a) => a.supportsPerPeriod).length;
-    process.stdout.write(
+    // 요약도 세 값으로 낸다. `0/6` 만 적으면 여섯 축이 재현에 실패했다는 뜻으로 읽히는데,
+    // 실제로는 아직 못 잰 것일 수 있다. 앞은 축을 고쳐야 하고 뒤는 세션을 더 쌓아야 한다.
+    const tally = (pick: (a: (typeof gate.axes)[number]) => string) => ({
+      pass: gate.axes.filter((a) => pick(a) === "pass").length,
+      fail: gate.axes.filter((a) => pick(a) === "fail").length,
+      unknown: gate.axes.filter((a) => pick(a) === "not-computable").length,
+    });
+    const at = tally((a) => a.supportsAllTime);
+    const pp = tally((a) => a.supportsPerPeriod);
+    const n = gate.axes.length;
+    const line = (
+      label: string,
+      x: { pass: number; fail: number; unknown: number },
+    ) =>
       say(
         lang,
-        `\n  전수 집계 화면 ${allTime}/${gate.axes.length} 축 · 구간별 화면 ${perPeriod}/${gate.axes.length} 축\n`,
-        `\n  All-time view ${allTime}/${gate.axes.length} axes · per-period view ${perPeriod}/${gate.axes.length} axes\n`,
-      ),
+        `  ${label} ${x.pass}/${n} 축 지지 · 미달 ${x.fail} · 판정 불가 ${x.unknown}\n`,
+        `  ${label} ${x.pass}/${n} axes supported · ${x.fail} failed · ${x.unknown} not computable\n`,
+      );
+    process.stdout.write(
+      "\n" +
+        line(say(lang, "전수 집계 화면", "All-time view  "), at) +
+        line(say(lang, "구간별 화면  ", "Per-period view"), pp),
     );
-    if (perPeriod < allTime) {
+    if (at.fail === 0 && at.unknown > 0) {
+      process.stdout.write(
+        say(
+          lang,
+          "  미달인 축은 없습니다. 못 받친 축은 전부 아직 재보지 못한 것이라,\n" +
+            "  고칠 것이 아니라 세션을 더 쌓아야 하는 자리입니다.\n",
+          "  No axis failed. Every unsupported axis is one this corpus cannot test yet,\n" +
+            "  so the fix is more sessions, not a different axis.\n",
+        ),
+      );
+    }
+    if (pp.pass < at.pass) {
       process.stdout.write(
         say(
           lang,
