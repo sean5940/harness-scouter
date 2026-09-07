@@ -1,0 +1,27 @@
+
+  HARNESS SCOUTER  all-time         Lv. 61  C
+  2026-05-10 ~ 2026-08-14 · 23 sessions · 4 history windows · coverage 71%
+  ────────────────────────────────────────────────────────────────────────────────
+  Retrieval          ████████░░░░░░░░░░░░░░░░  32  D   typical   38~50  best  52
+      File-finding discipline      0   n=   90
+      Index-first retrieval       24   n=  372
+      Evidence before edit        71   n=  328
+  Verification       ███████████░░░░░░░░░░░░░  45  D   typical   43~48  best  49
+      Pre-commit check freshness   3   n=   59
+      No redundant checks         87   n=  149
+  Delivery           █████████████████████░░░  86  A   typical   80~88  best  91
+      Reached an artifact         73   n=   11  (display)
+      No rework                   86   n= 1192
+  Autonomy           █████████████████████░░░  86  A   typical   81~95  best  98
+      No human intervention       86   n= 5473
+  Discipline         █████████████████░░░░░░░  70  B   typical   68~75  best  77
+      Instrumented-channel use    56   n= 2130
+      No repeat gate hits         85   n=  167
+  Context efficiency ██████████████████░░░░░░  74  B   typical   62~76  best  86
+      Read-scope discipline       60   n=  259
+      Recall of what was read     91   n= 1066
+      Response brevity            76   n= 3196
+      Context lightness           68   n= 5988
+  ────────────────────────────────────────────────────────────────────────────────
+  Overall 61.3 · C  (0.7p to the nearest grade cut)
+  All-time aggregate, so grades come from absolute scores. Drop --all for per-period grades.

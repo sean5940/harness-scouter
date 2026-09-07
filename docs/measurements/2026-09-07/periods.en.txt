@@ -1,0 +1,11 @@
+5 periods (46 sessions)
+
+   #    n  Period            Read-scope Check fres Instrument Read round Check redu Index-firs
+   0    4  2026-05-10~08-01         49%         6%        67%        83%        91%         7%
+   1    8  2026-08-01~08-09         76%         0%        36%        92%        91%        30%
+   2    7  2026-08-08~08-09         56%         0%        71%        94%        70%        44%
+   3    4  2026-08-14~08-14         44%         7%        58%        93%        88%         7%
+   4   23  2026-08-15~08-17         54%         0%        25%        96%        53%         8% open
+
+  Period size (turns)  min 757 · median 1,516 · max 1,685 · max/min 2.2x
+  When this is large, the gate's reproducibility reflects period size, not the harness.

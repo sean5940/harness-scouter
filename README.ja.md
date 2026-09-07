@@ -7,35 +7,37 @@
 測定の対象はモデルではなく**ハーネス**です。同じモデルを使っても、プロンプト・コンテキスト・フック・スキルをどう組んだかで結果が変わるので、その差を測るためのツールです。
 
 ```
-  HARNESS SCOUTER  all-time         Lv. 71  B
-  2026-07-02 ~ 2026-08-10 · 366 sessions · 30 history windows · coverage 82%
+  HARNESS SCOUTER  all-time         Lv. 61  C
+  2026-05-10 ~ 2026-08-14 · 23 sessions · 4 history windows · coverage 71%
   ────────────────────────────────────────────────────────────────────────────────
-  Retrieval          ████████████░░░░░░░░░░░░  52  C   typical   46~59  best  67
-      File-finding discipline     21   n= 1604
-      Index-first retrieval       45   n= 5608
-      Evidence before edit        91   n= 1861
-  Verification       ████████████████████░░░░  81  A   typical   75~89  best  99
-      Pre-commit check freshness  84   n=  415
-      No redundant checks         78   n= 2131
-  Delivery           █████████████████████░░░  88  A   typical   86~93  best  98
-      Reached an artifact         91   n=  178  (display)
-      No rework                   88   n= 6774
-  Autonomy           ██████████████████████░░  90  S   typical   85~96  best 100
-      No human intervention       90   n=78760
-  Discipline         ████████████████░░░░░░░░  65  B   typical   69~78  best  93
-      Instrumented-channel use    59   n=11414
-      No repeat gate hits         71   n= 2142
-  Context efficiency ████████████████░░░░░░░░  68  B   typical   64~72  best  83
-      Read-scope discipline       60   n= 2765
-      Recall of what was read     92   n=13977
-      Response brevity            56   n=25391
-      Context lightness           64   n=51374
+  Retrieval          ████████░░░░░░░░░░░░░░░░  32  D   typical   38~50  best  52
+      File-finding discipline      0   n=   90
+      Index-first retrieval       24   n=  372
+      Evidence before edit        71   n=  328
+  Verification       ███████████░░░░░░░░░░░░░  45  D   typical   43~48  best  49
+      Pre-commit check freshness   3   n=   59
+      No redundant checks         87   n=  149
+  Delivery           █████████████████████░░░  86  A   typical   80~88  best  91
+      Reached an artifact         73   n=   11  (display)
+      No rework                   86   n= 1192
+  Autonomy           █████████████████████░░░  86  A   typical   81~95  best  98
+      No human intervention       86   n= 5473
+  Discipline         █████████████████░░░░░░░  70  B   typical   68~75  best  77
+      Instrumented-channel use    56   n= 2130
+      No repeat gate hits         85   n=  167
+  Context efficiency ██████████████████░░░░░░  74  B   typical   62~76  best  86
+      Read-scope discipline       60   n=  259
+      Recall of what was read     91   n= 1066
+      Response brevity            76   n= 3196
+      Context lightness           68   n= 5988
   ────────────────────────────────────────────────────────────────────────────────
-  Overall 70.9 · B  (7.1p to the nearest grade cut)
+  Overall 61.3 · C  (0.7p to the nearest grade cut)
   All-time aggregate, so grades come from absolute scores. Drop --all for per-period grades.
 ```
 
-数字そのものより**どの構成要素がボトルネックか**が役に立ちます。上の画面で探索力52を作ったのは `ファイル探索の規律 21` ひとつだけで、それを直せば探索力は52から78まで上がります。実際にこのツールを作りながらそう使いました。
+数字そのものより**どの構成要素がボトルネックか**が役に立ちます。上の画面で `scouter guide --all` は検証力45を指し、`コミット前の検証の鮮度 3 (n=59)` ひとつを名指しします。直せば +48 です。実際にこのツールを作りながらそう使いました。
+
+この画面の数字は 2026-09-07 に、ある一台のコーパスから出たものです。元の出力は `docs/measurements/` にあります。あなたのトランスクリプトで回せば違う数字が出ます。それが要点であり、同時にこの数字が自分を比べる基準にならない理由です。
 
 このスコアが実際の品質と相関するという外部の根拠はまだありません。[既知の限界](#既知の限界)を先に読めば、どこまで信じてよいかを判断できます。
 
@@ -45,9 +47,9 @@
 
 三つの流れが別々に回ります。
 
-**行動パイプライン**はトランスクリプトから事実だけを抜いて SQLite に入れ、スコアは毎回計算し直します。定義を直すときに940MBを再パースしないための構造です。`db.ts` にスコアがないのはそのためです。
+**行動パイプライン**はトランスクリプトから事実だけを抜いて SQLite に入れ、スコアは毎回計算し直します。定義を直すときに166MBを再パースしないための構造です。`db.ts` にスコアがないのはそのためです。
 
-**ハーネス構造スキャン**はリポジトリからセンサーとガイドの一覧を読みます。行動だけを見ても「ブロック0件」がセンサーが良いからなのか、そもそも無いからなのかが分かれないからです。軸の名前は Martin Fowler の [harness engineering](https://martinfowler.com/articles/harness-engineering.html) から取りました。
+**ハーネス構造スキャン**はリポジトリからセンサーとガイドの一覧を読みます。行動だけを見ても「ブロック0件」がセンサーが良いからなのか、そもそも無いからなのかが分かれないからです。軸の名前は Birgitta Böckeler の [harness engineering](https://martinfowler.com/articles/harness-engineering.html) から取りました。
 
 **信頼性の担保**はこの数字を信じてよいかを測ります。再現性ゲート、スコア操作シナリオ、妥当性の状態がここにあります。
 
@@ -56,8 +58,8 @@
 すべてローカルにあります。何も外に出ません。例外は `scouter outcomes` ひとつだけで、このときだけ `gh` で GitHub に PR の一覧を問い合わせます。
 
 ```
-~/.claude/projects/**/*.jsonl   読み取り専用の入力。940MB
-~/.harness-scouter/scouter.sqlite   事実テーブル。218MB
+~/.claude/projects/**/*.jsonl   読み取り専用の入力。166MB
+~/.harness-scouter/scouter.sqlite   事実テーブル。27MB
 ~/.harness-scouter/labels.jsonl     人が付けたラベル
 ```
 
@@ -71,15 +73,15 @@ DB には**パースした事実だけ**が入ります。スコアはありま�
 
 | テーブル        | 入れるもの                                                               | 行数(例) |
 | --------------- | ------------------------------------------------------------------------ | -------- |
-| `session`       | セッションメタ。プロジェクト・ブランチ・モデル・エントリポイント         | 609      |
-| `tool_call`     | ツール呼び出し。名前・コマンド・ファイルパス・ブロック有無・エージェント | 71,727   |
-| `tool_result`   | ツール結果。読んだ行数・編集の種類・stdout の末尾                        | 71,719   |
-| `usage`         | 応答ごとのトークン。リクエスト単位で重複排除                             | 56,954   |
-| `session_event` | 中断・キュー割り込み・ツール拒否                                         | 4,997    |
-| `artifact`      | コミット・PR・コミットハッシュ                                           | 1,473    |
-| `file_cursor`   | ファイルごとの mtime とバイト位置                                        | 2,099    |
+| `session`       | セッションメタ。プロジェクト・ブランチ・モデル・エントリポイント         | 49       |
+| `tool_call`     | ツール呼び出し。名前・コマンド・ファイルパス・ブロック有無・エージェント | 9,083    |
+| `tool_result`   | ツール結果。読んだ行数・編集の種類・stdout の末尾                        | 9,083    |
+| `usage`         | 応答ごとのトークン。リクエスト単位で重複排除                             | 7,209    |
+| `session_event` | 中断・キュー割り込み・ツール拒否                                         | 339      |
+| `artifact`      | コミット・PR・コミットハッシュ                                           | 226      |
+| `file_cursor`   | ファイルごとの mtime とバイト位置                                        | 224      |
 
-**軸のスコアを保存しないことが設計の核心です。** 指標の定義がよく変わるのに、定義を直すたびに940MBを再パースしなければならないなら、反復の周期が壊れます。事実だけを貯めておいて、軸は毎回計算します。
+**軸のスコアを保存しないことが設計の核心です。** 指標の定義がよく変わるのに、定義を直すたびに166MBを再パースしなければならないなら、反復の周期が壊れます。事実だけを貯めておいて、軸は毎回計算します。
 
 ### 消しても大丈夫です
 
@@ -87,7 +89,7 @@ DB はいつでも捨てて作り直せます。トランスクリプトが原�
 
 ```bash
 rm ~/.harness-scouter/scouter.sqlite*
-npm run scouter -- scan     # 940MB 全体を再パース、8秒
+npm run scouter -- scan     # 166MB 全体を再パース、8秒
 ```
 
 増分スキャンはファイルごとの mtime とバイト位置を覚えていて、新しく付いた行だけを読みます。変わったものがなければ1秒以内に終わります。
@@ -208,9 +210,9 @@ $ scouter status --lang klingon
 マッピング表はいつでも古くなります。そのため、プロファイルが観測をどれだけ覆っているかも一緒に測ります。
 
 ```
-観測したツール呼び出し 71,727件
-  能力にマッピング済み  71,714  100.0%
-  未マッピング              13    0.0%
+観測したツール呼び出し 9,083件
+  能力にマッピング済み  9,083  100.0%
+  未マッピング              0    0.0%
 ```
 
 **カバレッジが90%を下回るとスコアを出さず、何が捕まえられなかったかを見せます。** 他人のハーネスで0点が出るのではなく、「`read_file` を知りません」が出ます。
@@ -427,7 +429,7 @@ SDK を使わず stdio JSON-RPC を直接扱うので**ランタイム依存が�
 
 | 試み       | 方法                                                        | 棄却の理由                                                                                             |
 | ---------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| 人のラベル | セッションごとに良い・悪いを付けて30件集める                | セッションごとに人が必要で広げられず、他人のハーネスを評価するにはその人のラベルをもらう必要があります |
+| 人のラベル | セッションごとに良い・悪いを付ける。設計段階で棄却し0件     | セッションごとに人が必要で広げられず、他人のハーネスを評価するにはその人のラベルをもらう必要があります |
 | PR 結果    | GitHub に既にあるマージ・レビューの記録を正解の代わりに使う | 信号に弁別力がなく、事前の仮説と反対に出ました                                                         |
 
 PR 結果がなぜ駄目なのかは、二つの表で分かれます。
@@ -543,7 +545,7 @@ npm test            # vitest run
 npm run typecheck
 ```
 
-テストは152件です。定義を直すときは回帰テストも一緒に直してください — 値が変わる種類なので、静的な検査では捕まえられません。
+テストは396件です。定義を直すときは回帰テストも一緒に直してください — 値が変わる種類なので、静的な検査では捕まえられません。
 
 ```
 packages/core   パーサー・抽出・事実テーブル・指標・区間・能力値・ゲート・ビュー

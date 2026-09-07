@@ -7,35 +7,37 @@ Turns the Claude Code transcripts sitting on your machine into 6 stats that meas
 What gets measured is the **harness**, not the model. The same model gives different results depending on how the prompts, context, hooks, and skills were put together, and this tool tries to measure that difference.
 
 ```
-  HARNESS SCOUTER  all-time         Lv. 71  B
-  2026-07-02 ~ 2026-08-10 · 366 sessions · 30 history windows · coverage 82%
+  HARNESS SCOUTER  all-time         Lv. 61  C
+  2026-05-10 ~ 2026-08-14 · 23 sessions · 4 history windows · coverage 71%
   ────────────────────────────────────────────────────────────────────────────────
-  Retrieval          ████████████░░░░░░░░░░░░  52  C   typical   46~59  best  67
-      File-finding discipline     21   n= 1604
-      Index-first retrieval       45   n= 5608
-      Evidence before edit        91   n= 1861
-  Verification       ████████████████████░░░░  81  A   typical   75~89  best  99
-      Pre-commit check freshness  84   n=  415
-      No redundant checks         78   n= 2131
-  Delivery           █████████████████████░░░  88  A   typical   86~93  best  98
-      Reached an artifact         91   n=  178  (display)
-      No rework                   88   n= 6774
-  Autonomy           ██████████████████████░░  90  S   typical   85~96  best 100
-      No human intervention       90   n=78760
-  Discipline         ████████████████░░░░░░░░  65  B   typical   69~78  best  93
-      Instrumented-channel use    59   n=11414
-      No repeat gate hits         71   n= 2142
-  Context efficiency ████████████████░░░░░░░░  68  B   typical   64~72  best  83
-      Read-scope discipline       60   n= 2765
-      Recall of what was read     92   n=13977
-      Response brevity            56   n=25391
-      Context lightness           64   n=51374
+  Retrieval          ████████░░░░░░░░░░░░░░░░  32  D   typical   38~50  best  52
+      File-finding discipline      0   n=   90
+      Index-first retrieval       24   n=  372
+      Evidence before edit        71   n=  328
+  Verification       ███████████░░░░░░░░░░░░░  45  D   typical   43~48  best  49
+      Pre-commit check freshness   3   n=   59
+      No redundant checks         87   n=  149
+  Delivery           █████████████████████░░░  86  A   typical   80~88  best  91
+      Reached an artifact         73   n=   11  (display)
+      No rework                   86   n= 1192
+  Autonomy           █████████████████████░░░  86  A   typical   81~95  best  98
+      No human intervention       86   n= 5473
+  Discipline         █████████████████░░░░░░░  70  B   typical   68~75  best  77
+      Instrumented-channel use    56   n= 2130
+      No repeat gate hits         85   n=  167
+  Context efficiency ██████████████████░░░░░░  74  B   typical   62~76  best  86
+      Read-scope discipline       60   n=  259
+      Recall of what was read     91   n= 1066
+      Response brevity            76   n= 3196
+      Context lightness           68   n= 5988
   ────────────────────────────────────────────────────────────────────────────────
-  Overall 70.9 · B  (7.1p to the nearest grade cut)
+  Overall 61.3 · C  (0.7p to the nearest grade cut)
   All-time aggregate, so grades come from absolute scores. Drop --all for per-period grades.
 ```
 
-The useful part is not the number itself but **which component is the bottleneck**. In the screen above, Retrieval 52 comes down to one thing, `File-finding discipline 21`, and fixing it takes Retrieval from 52 to 78. That is how I used it while building this tool.
+The useful part is not the number itself but **which component is the bottleneck**. In the screen above, `scouter guide --all` picks Verification 45 and names one component, `Pre-commit check freshness 3 (n=59)`, worth +48 once it is fixed. That is how I used it while building this tool.
+
+The numbers on this screen come from one corpus on one machine, dated 2026-09-07. `docs/measurements/` holds the raw output. Run it on your own transcripts and you will get different numbers; that is the point, and it is also why these are not a benchmark you can compare yourself against.
 
 There is no external evidence yet that these scores correlate with actual quality. Read [Known limitations](#known-limitations) first to decide how far to trust them.
 
@@ -45,9 +47,9 @@ There is no external evidence yet that these scores correlate with actual qualit
 
 Three tracks run separately.
 
-**The behavior pipeline** pulls only facts out of the transcripts into SQLite, and recomputes the scores every time. The structure exists so that changing a definition does not mean reparsing 940MB. That is why there are no scores in `db.ts`.
+**The behavior pipeline** pulls only facts out of the transcripts into SQLite, and recomputes the scores every time. The structure exists so that changing a definition does not mean reparsing 166MB. That is why there are no scores in `db.ts`.
 
-**The harness structure scan** reads the inventory of sensors and guides out of the repository. Behavior alone cannot tell whether "0 blocks" means the sensors are good or that there are none. The axis names come from Martin Fowler's [harness engineering](https://martinfowler.com/articles/harness-engineering.html).
+**The harness structure scan** reads the inventory of sensors and guides out of the repository. Behavior alone cannot tell whether "0 blocks" means the sensors are good or that there are none. The axis names come from Birgitta Böckeler's [harness engineering](https://martinfowler.com/articles/harness-engineering.html).
 
 **The trust machinery** measures whether these numbers can be trusted. The reproducibility gate, the gaming scenarios, and the validity status live here.
 
@@ -56,8 +58,8 @@ Three tracks run separately.
 Everything is local. Nothing leaves the machine. The one exception is `scouter outcomes`, the only command that asks GitHub for a list of PRs through `gh`.
 
 ```
-~/.claude/projects/**/*.jsonl   read-only input. 940MB
-~/.harness-scouter/scouter.sqlite   fact tables. 218MB
+~/.claude/projects/**/*.jsonl   read-only input. 166MB
+~/.harness-scouter/scouter.sqlite   fact tables. 27MB
 ~/.harness-scouter/labels.jsonl     labels applied by a person
 ```
 
@@ -71,15 +73,15 @@ The DB holds **parsed facts only**. No scores.
 
 | Table           | What it holds                                                       | Rows (sample) |
 | --------------- | ------------------------------------------------------------------- | ------------- |
-| `session`       | Session metadata. Project, branch, model, entry point               | 609           |
-| `tool_call`     | Tool calls. Name, command, file path, whether it was blocked, agent | 71,727        |
-| `tool_result`   | Tool results. Lines read, edit kind, stdout tail                    | 71,719        |
-| `usage`         | Tokens per response. Deduplicated per request                       | 56,954        |
-| `session_event` | Interrupts, queued input, tool denials                              | 4,997         |
-| `artifact`      | Commits, PRs, commit hashes                                         | 1,473         |
-| `file_cursor`   | Per-file mtime and byte position                                    | 2,099         |
+| `session`       | Session metadata. Project, branch, model, entry point               | 49            |
+| `tool_call`     | Tool calls. Name, command, file path, whether it was blocked, agent | 9,083         |
+| `tool_result`   | Tool results. Lines read, edit kind, stdout tail                    | 9,083         |
+| `usage`         | Tokens per response. Deduplicated per request                       | 7,209         |
+| `session_event` | Interrupts, queued input, tool denials                              | 339           |
+| `artifact`      | Commits, PRs, commit hashes                                         | 226           |
+| `file_cursor`   | Per-file mtime and byte position                                    | 224           |
 
-**Not storing the axis scores is the core of the design.** Metric definitions change often, and if every change meant reparsing 940MB, the iteration loop would fall apart. Facts are stored; axes are computed every time.
+**Not storing the axis scores is the core of the design.** Metric definitions change often, and if every change meant reparsing 166MB, the iteration loop would fall apart. Facts are stored; axes are computed every time.
 
 ### It is safe to delete
 
@@ -87,7 +89,7 @@ The DB can be thrown away and rebuilt at any time. The transcripts are the origi
 
 ```bash
 rm ~/.harness-scouter/scouter.sqlite*
-npm run scouter -- scan     # full 940MB reparse, 8s
+npm run scouter -- scan     # full 166MB reparse, 8s
 ```
 
 The incremental scan remembers each file's mtime and byte position and reads only the lines appended since. With nothing changed it finishes in under 1 second.
@@ -208,9 +210,9 @@ A session that fixed nothing and only repeated index searches really does come o
 A mapping table goes stale sooner or later. So it also measures how much of what is observed the profile covers.
 
 ```
-71,727 tool calls observed
-  mapped to a capability  71,714  100.0%
-  unmapped                    13    0.0%
+9,083 tool calls observed
+  mapped to a capability  9,083  100.0%
+  unmapped                    0    0.0%
 ```
 
 **When coverage drops under 90% it does not give a score, it shows what was not caught.** Someone else's harness does not come out at 0, it comes out as "`read_file` is unknown".
@@ -425,10 +427,10 @@ This tool reports "Exploration 53". But **there is no way to check whether 53 is
 
 Two attempts at an answer key, two rejections. Both are recorded with their numbers in `validity.ts`.
 
-| Attempt      | Method                                                               | Why it was rejected                                                                                            |
-| ------------ | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Human labels | Mark each session good or bad, 30 collected                          | Needs a person per session so it does not scale, and evaluating someone else's harness would need their labels |
-| PR outcomes  | Use the merge and review records already in GitHub as the answer key | The signal does not discriminate, and it came out opposite to the prior hypotheses                             |
+| Attempt      | Method                                                                   | Why it was rejected                                                                                            |
+| ------------ | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| Human labels | Mark each session good or bad. Rejected at the design stage, 0 collected | Needs a person per session so it does not scale, and evaluating someone else's harness would need their labels |
+| PR outcomes  | Use the merge and review records already in GitHub as the answer key     | The signal does not discriminate, and it came out opposite to the prior hypotheses                             |
 
 Why PR outcomes do not work comes apart into two tables.
 
@@ -543,7 +545,7 @@ npm test            # vitest run
 npm run typecheck
 ```
 
-152 tests. When you change a definition, change the regression tests with it — the values move, and static checks will not catch that.
+396 tests. When you change a definition, change the regression tests with it — the values move, and static checks will not catch that.
 
 ```
 packages/core   parser · extract · fact tables · metrics · periods · stats · gate · views
