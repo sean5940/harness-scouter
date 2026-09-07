@@ -2,7 +2,7 @@
   "name": "harness-scouter-vscode",
   "displayName": "Harness Scouter",
   "description": "Claude Code 트랜스크립트에서 하네스 설계 품질을 측정한다",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"

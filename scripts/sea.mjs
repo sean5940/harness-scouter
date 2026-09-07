@@ -88,12 +88,18 @@ if (process.platform === "darwin") {
 }
 
 console.log("압축");
+// LICENSE 를 함께 묶는다. 이 압축본이 남의 코드를 담은 재배포본이고, MIT 는 "all copies
+// or substantial portions" 에 고지를 넣으라고 요구한다. 저장소 루트에만 두면 정작
+// 사람이 받는 쪽에는 고지가 없다.
 run("tar", [
   "-czf",
   join(BUILD, `scouter-${TARGET}.tar.gz`),
   "-C",
   BUILD,
   "scouter",
+  "-C",
+  ROOT,
+  "LICENSE",
 ]);
 
 const mb = (statSync(OUT).size / 1024 / 1024).toFixed(0);
