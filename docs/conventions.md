@@ -100,8 +100,14 @@ PR 을 보는 CI 가 없으므로 이 대조는 사람이 돌려야 한다.
 | 이모지      | 금지                        | 동일                                                                       | —                           |
 | 한자 혼용   | 금지                        | 한국어 산출물에 한해 동일. `README.ja.md` 는 일본어라 해당 없음            | —                           |
 
+## 8. 릴리스
+
+- 버전은 내부 의존 핀(cli·mcp 의 `@harness-scouter/core`)과 `packages/cli/src/version.ts` 상수를 먼저 고친 뒤 `npm version` 으로 올린다. 순서를 거꾸로 하면 npm 이 아직 없는 버전을 레지스트리에서 찾다 404 로 죽고 lock 을 옛 버전으로 남긴다(4e0d700 에서 한 번 겪음).
+- npm 은 패키지 디렉터리의 LICENSE 만 담고 gitignore 된 `dist/` 는 `files` 필드가 없으면 뺀다. 그래서 core·cli·mcp 에 LICENSE 사본과 `files: ["dist"]`·`prepack` 을 둔다(c65f921).
+- 태그 push 뒤 자동 릴리스 노트는 바뀐 것과 안 바뀐 것을 손으로 적은 노트로 덮는다. `npm publish` 는 사람이 한다.
+
 ## N. Notes
 
 - 머지 전 로컬에서 도는 것: `npm run build` · `npm test` · `npm run check:format` · `npm run check:docs`
 - PR을 검사하는 CI가 없다. 위 넷은 사람이 돌려야 하고, 안 돌리면 아무도 안 잡는다.
-- `check:docs` 는 코퍼스가 있어야 도는 검사 2건을 포함한다. 코퍼스 없는 환경의 실패 2건은 정상이다.
+- `check:docs` 의 검사 2건은 README 를 로컬 DB 로 지금 돌린 출력과 견준다. DB 가 바뀌어 어긋나면 README 와 `docs/measurements/` 박제를 같은 날 출력으로 함께 바꾼다(`architecture.md` N. Notes).

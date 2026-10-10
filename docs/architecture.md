@@ -95,7 +95,10 @@ docs/     adr/ · briefs/ · reviews/ · retros/ · superpowers/specs/
 
 - CI는 `release.yml` 하나뿐이고 PR 검사가 없다. 빌드·테스트·포맷·문서 대조는 전부 로컬
   판단에 걸려 있다. 머지 전 `npm run build && npm test && npm run check:format` 을 직접 돌린다.
-- `npm run check:docs` 의 검사 2건(예시 화면·커버리지 수)은 940MB 코퍼스가 있어야 통과한다.
-  코퍼스 없는 환경에서는 항상 실패하며, 그것이 정상이다. 나머지 검사는 코퍼스 없이도 돈다.
+- `npm run check:docs` 의 검사 2건(예시 화면·커버리지 수)은 README 를 지금 돌린 CLI 출력(로컬 DB
+  `~/.harness-scouter/scouter.sqlite` 기준)과 견준다. README 는 2026-09-07 출력에 맞췄고 그 출력을
+  `docs/measurements/2026-09-07/` 에 박제했다. 옛 940MB 코퍼스는 Claude Code 가 오래된 트랜스크립트를
+  지워 되살릴 수 없다. 로컬 DB 가 바뀌면 두 검사가 다시 어긋난다. 그때는 README 와 박제를 같은 날
+  출력으로 함께 바꾼다(644dbee). 나머지 검사는 DB 없이도 돈다.
 - `check:docs` 는 게이트·층화 출력의 수치를 검증하지 않는다. 그 숫자를 README에 적을 때는
   사람이 맞춰야 한다.
