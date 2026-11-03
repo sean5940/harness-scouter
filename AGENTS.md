@@ -29,16 +29,6 @@
 - 코드 스타일·네이밍: `docs/conventions.md`
 - 글로벌 상속 + 프로젝트 오버라이드 구조
 
-## 워크플로 스킬
-
-이 프로젝트에서 사용 가능한 ai-config 스킬:
-
-- `/office-hours` — 새 기능 기획 시 진입점
-- `/plan-ceo-review` — 스코프·전략 검토
-- `/plan-eng-review` — 아키텍처·테스트·엣지케이스 검토
-- `/document-release` — 살아있는 문서 갱신, ADR 정합성 점검
-- `/retro` — 주간 회고 + 산출물 위생 점검
-
 ## 산출물 위치
 
 - briefs: `docs/briefs/`
