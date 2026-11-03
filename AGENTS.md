@@ -59,4 +59,3 @@
 - 살아있는 문서: in-place 갱신 가능 (`docs/architecture.md`, `docs/conventions.md`)
 - 시점 박제: 본문 수정 절대 금지 (briefs, reviews, retros). frontmatter status만 변경 가능
 - ADR: 본문 불변, status 전이만 허용
-- 자동 git commit 금지
