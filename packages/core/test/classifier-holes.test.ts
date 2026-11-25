@@ -21,6 +21,17 @@ describe("스캔이 분류기 밖으로 빠지던 경로", () => {
     expect(classifyBash("grep -n 'X' app/*.ts").isContentSearch).toBe(true);
   });
 
+  it("패턴에 든 별표는 글롭이 아니다", () => {
+    expect(
+      classifyBash(`cat build.log | grep -o "x[0-9]*"`).isContentSearch,
+    ).toBe(false);
+    expect(classifyBash("grep -n 'a.*b' app/a.ts").isContentSearch).toBe(false);
+  });
+
+  it("-e 로 패턴을 주면 위치 인자는 전부 파일이다", () => {
+    expect(classifyBash("grep -e foo app/*.ts").isContentSearch).toBe(true);
+  });
+
   it("단일 파일 grep 은 여전히 스캔이 아니다", () => {
     expect(classifyBash("grep -n foo app/a.ts").isContentSearch).toBe(false);
   });

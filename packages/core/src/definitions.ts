@@ -13,6 +13,7 @@ export {
   classifyBash,
   extensionOf,
   isCodeFile,
+  isEphemeralPath,
   isNonTextFile,
   CODE_EXTENSIONS,
   NON_TEXT_EXTENSIONS,

@@ -9,6 +9,7 @@ import {
   classifyBash,
   isEffectivePartialRead,
   isCodeFile,
+  isEphemeralPath,
   isNonTextFile,
   isIndexedSearchTool,
   isExistingFileEdit,
@@ -116,6 +117,28 @@ const EDIT_TOOLS = new Set(["Edit", "Write", "NotebookEdit", "MultiEdit"]);
  * 고친 것을 못 뽑았으면(경로 없는 편집) 덮는 것으로 본다. 틀리는 방향을 관대한 쪽에
  * 두어야 정상적인 검증이 파싱 실패로 신선도를 잃지 않는다.
  */
+/**
+ * 테스트 파일이 옆자리의 같은 이름 파일을 덮는지 판정.
+ *
+ * `hooks/gate.test.ts` 를 돌린 것은 `hooks/gate.py` 를 검증한 것. 경로가 달라 안 덮는 것으로
+ * 세던 때는 대상만 고치고 옆의 테스트를 다시 돌린 정상 흐름이 신선도를 잃음.
+ * 디렉토리까지 맞아야 인정. 이름만 같은 다른 디렉토리의 파일은 안 본 파일.
+ */
+function coversColocatedSubject(testPath: string, edited: string): boolean {
+  const cut = testPath.lastIndexOf("/");
+  const dir = testPath.slice(0, cut);
+  const name = testPath.slice(cut + 1);
+  const subject =
+    /^(.+)\.(test|spec)\.[cm]?[jt]sx?$/.exec(name)?.[1] ??
+    /^test_(.+)\.py$/.exec(name)?.[1] ??
+    /^(.+)_test\.py$/.exec(name)?.[1];
+  if (subject === undefined) return false;
+  const editedCut = edited.lastIndexOf("/");
+  const editedDir = edited.slice(0, editedCut);
+  if (editedDir !== dir && !editedDir.endsWith(`/${dir}`)) return false;
+  return edited.slice(editedCut + 1).startsWith(`${subject}.`);
+}
+
 function verifierCoversEdits(
   targets: string[],
   segment: { editedPaths: string[] },
@@ -134,6 +157,8 @@ function verifierCoversEdits(
       if (base === "") return true;
       if (edited === base) return true;
       if (edited.includes(`${base}/`)) return true;
+      if (base.includes("/") && coversColocatedSubject(base, edited))
+        return true;
       // 꼬리 일치는 구분자를 낀 것만 인정하고, 대상에 구분자가 있어야 쓴다.
       // 맨 파일이름으로 꼬리를 맞추면 `a.ts` 가 아무 디렉토리의 `a.ts` 에나 붙어서,
       // 안 본 파일을 덮은 것으로 셀 수 있다.
@@ -356,9 +381,11 @@ export function computeSessionMetrics(
         reads.lastEdit.set(path, order);
         if (isCodeFile(path)) {
           extras.codeEdits += 1;
-          segment.lastCodeEdit = order;
-          segment.hasCodeEdit = true;
-          segment.editedPaths.push(path);
+          if (!isEphemeralPath(path)) {
+            segment.lastCodeEdit = order;
+            segment.hasCodeEdit = true;
+            segment.editedPaths.push(path);
+          }
         }
       }
       blockKinds.set(agentKey, new Set());
@@ -407,7 +434,10 @@ export function computeSessionMetrics(
       axes.instrumentedChannel.num += 1;
       // 축3은 코드 편집만 센다. 대상을 못 뽑았으면 코드로 보지 않는다.
       // 그래야 문서를 bash로 고친 것이 커밋 분모에 들어가지 않는다.
-      if (isCodeFile(kind.fileWriteTarget)) {
+      if (
+        isCodeFile(kind.fileWriteTarget) &&
+        !isEphemeralPath(kind.fileWriteTarget)
+      ) {
         segment.lastCodeEdit = order;
         segment.hasCodeEdit = true;
         if (kind.fileWriteTarget !== null)

@@ -114,6 +114,56 @@ describe("축3 검증 신선도", () => {
   });
 });
 
+describe("축3 검증 신선도: 임시 경로와 옆자리 테스트", () => {
+  it("스크래치패드에 쓴 스크립트는 코드 편집으로 세지 않는다", () => {
+    // 커밋에 들어갈 수 없는 파일이다. 세면 문서만 커밋한 세션이 분모에 들어간다.
+    const m = computeSessionMetrics("s", [
+      edit("/private/tmp/claude-502/proj/session/scratchpad/probe.py"),
+      edit("/tmp/replay.mjs"),
+      edit("/repo/README.md"),
+      bash("git commit -m docs"),
+    ]);
+    expect(m.axes.verificationFreshness.den).toBe(0);
+  });
+
+  it("임시 파일을 나중에 고쳐도 앞선 검증이 낡지 않는다", () => {
+    const m = computeSessionMetrics("s", [
+      edit("/repo/app/a.ts"),
+      bash("npx tsc --noEmit"),
+      edit("/tmp/probe.ts"),
+      bash("git commit -m x"),
+    ]);
+    expect(m.axes.verificationFreshness).toEqual({ num: 1, den: 1 });
+  });
+
+  it("옆자리 테스트를 돌리면 같은 이름의 대상 파일을 덮는다", () => {
+    const m = computeSessionMetrics("s", [
+      edit("/repo/.agent/hooks/gate.py"),
+      bash("npx tsx .agent/hooks/gate.test.ts"),
+      bash("git commit -m x"),
+    ]);
+    expect(m.axes.verificationFreshness).toEqual({ num: 1, den: 1 });
+  });
+
+  it("다른 디렉토리의 같은 이름 파일은 덮지 않는다", () => {
+    const m = computeSessionMetrics("s", [
+      edit("/repo/app/gate.ts"),
+      bash("npx tsx .agent/hooks/gate.test.ts"),
+      bash("git commit -m x"),
+    ]);
+    expect(m.axes.verificationFreshness).toEqual({ num: 0, den: 1 });
+  });
+
+  it("옆자리 테스트는 이름이 다른 파일을 덮지 않는다", () => {
+    const m = computeSessionMetrics("s", [
+      edit("/repo/.agent/hooks/other.py"),
+      bash("npx tsx .agent/hooks/gate.test.ts"),
+      bash("git commit -m x"),
+    ]);
+    expect(m.axes.verificationFreshness).toEqual({ num: 0, den: 1 });
+  });
+});
+
 describe("축4 검증 공회전 절제", () => {
   it("편집 없이 같은 검증을 반복하면 공회전이다", () => {
     const m = computeSessionMetrics("s", [bash("npx tsc"), bash("npx tsc")]);

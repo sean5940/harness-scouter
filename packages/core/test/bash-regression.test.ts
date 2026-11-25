@@ -63,6 +63,30 @@ describe("find 술어", () => {
   });
 });
 
+describe("러너 이름 없이 직접 돌리는 테스트", () => {
+  it.each([
+    "npx tsx .agent/hooks/gate.test.ts",
+    "node --test",
+    "node --test test/a.test.mjs",
+    "python3 -m pytest tests",
+    "python3 -m unittest discover",
+    "python3 scripts/test_gate.py",
+    "python3 scripts/gate_test.py",
+  ])("%s 는 테스트 실행이다", (command) => {
+    expect(classifyBash(command).verifierKinds).toContain("test");
+  });
+
+  it.each([
+    "npx tsx scripts/build.ts",
+    "node scripts/run.mjs",
+    "python3 scripts/latest_report.py",
+    "python3 -m http.server",
+    "cat app/a.test.ts",
+  ])("%s 는 테스트 실행이 아니다", (command) => {
+    expect(classifyBash(command).verifierKinds).not.toContain("test");
+  });
+});
+
 describe("npm 래퍼 스크립트", () => {
   it.each([
     ["npm run typecheck", "typecheck"],

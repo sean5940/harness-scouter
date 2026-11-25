@@ -93,6 +93,21 @@ export function isCodeFile(filePath: string | null | undefined): boolean {
   return ext !== null && CODE_EXTENSIONS.has(ext);
 }
 
+/**
+ * 저장소 밖 임시 경로 판정.
+ *
+ * 임시 디렉토리·스크래치패드에 쓴 스크립트는 커밋에 들어갈 수 없는 파일. 코드 편집으로 세던
+ * 때는 분석용 스크립트 하나를 쓰고 문서만 커밋한 세션이 "검증 없이 코드를 커밋"으로 잡힘
+ * (실측: 신선도 실패 878건 중 80건).
+ */
+export function isEphemeralPath(filePath: string | null | undefined): boolean {
+  if (filePath === null || filePath === undefined) return false;
+  return (
+    /^\/(private\/)?(tmp|var\/folders)\//.test(filePath) ||
+    filePath.includes("/scratchpad/")
+  );
+}
+
 export function isNonTextFile(filePath: string | null | undefined): boolean {
   const ext = extensionOf(filePath);
   return ext !== null && NON_TEXT_EXTENSIONS.has(ext);
@@ -408,6 +423,9 @@ const NO_OP_VERIFIER_FLAG = /^(--version|--help|-h)$/;
 const SHORT_V_IS_VERSION =
   /^(tsc|tsx|eslint|prettier|node|npm|yarn|pnpm|bun|vitest|jest|mocha)$/;
 
+const JS_TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/;
+const PY_TEST_FILE = /(^|\/)(test_[^/]*|[^/]*_test)\.py$/;
+
 function verifierKindsOf(tokens: string[]): string[] {
   const kinds = new Set<string>();
   if (tokens.some((t) => NO_OP_VERIFIER_FLAG.test(t))) return [];
@@ -479,6 +497,22 @@ function verifierKindsOf(tokens: string[]): string[] {
     const target = tokens[i + 1];
     if (target !== undefined && /lint|typecheck|verify/.test(target))
       kinds.add(KIND_LINT);
+  }
+
+  // 테스트 러너 없이 직접 돌리는 테스트 파일. `tsx foo.test.ts`·`node --test`·
+  // `python3 -m pytest` 는 러너 이름이 선두에 없어서 통째로 빠져 있었다. 훅·스크립트를
+  // 이렇게 검증하는 저장소는 검증을 돌리고도 안 돌린 것으로 잡혔다(실측 577건 중 302건).
+  const args = tokens.slice(i + 1);
+  const positional = args.filter((t) => !t.startsWith("-"));
+  if (/^(tsx|ts-node|node|bun|deno)$/.test(bare)) {
+    if (bare === "node" && args.includes("--test")) kinds.add("test");
+    if (positional.some((t) => JS_TEST_FILE.test(t))) kinds.add("test");
+  }
+  if (/^python(\d+(\.\d+)?)?$/.test(bare)) {
+    const module = args[args.indexOf("-m") + 1];
+    if (args.includes("-m") && /^(pytest|unittest)$/.test(module ?? ""))
+      kinds.add("test");
+    if (positional.some((t) => PY_TEST_FILE.test(t))) kinds.add("test");
   }
 
   return [...kinds];
@@ -558,8 +592,24 @@ type SearchKind = "file" | "content" | null;
  * 없다는 이유로 통째로 빠져 있었다.
  */
 function targetsManyFiles(args: string[]): boolean {
-  return args.some((t) => !t.startsWith("-") && t.includes("*"));
+  // 첫 위치 인자는 패턴. 패턴의 `*` 를 글롭으로 읽던 때는
+  // `… | grep -o "x[0-9]*"` 같은 파이프 필터가 다파일 스캔으로 잡힘.
+  const positional: string[] = [];
+  let patternByFlag = false;
+  for (let i = 0; i < args.length; i += 1) {
+    const t = args[i] as string;
+    if (GREP_VALUE_FLAG.test(t)) {
+      if (t === "-e" || t === "--regexp") patternByFlag = true;
+      i += 1;
+      continue;
+    }
+    if (!t.startsWith("-")) positional.push(t);
+  }
+  const files = patternByFlag ? positional : positional.slice(1);
+  return files.some((t) => t.includes("*"));
 }
+
+const GREP_VALUE_FLAG = /^(-[efmABC]|--(regexp|file|max-count))$/;
 
 function searchKindOfSegment(tokens: string[]): SearchKind {
   let i = 0;
